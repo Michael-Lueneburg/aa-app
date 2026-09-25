@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AA-Reflex</title>
+  <meta name="description" content="Morgen- und Abendroutine, 10. Schritt und Rückblick – alle Daten bleiben auf dem Gerät.">
+  <meta name="theme-color" content="#111827">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">AA-Reflex</div>
+    <div class="hstats">
+      <span id="h-sober" class="hpill" hidden></span>
+      <span id="h-streak" class="hpill streak" hidden></span>
+    </div>
+    <span id="savestate" aria-live="polite"></span>
+  </header>
+
+  <main id="view"><p class="hint center">Lade …</p></main>
+
+  <nav id="tabbar" aria-label="Hauptnavigation">
+    <a href="#/morgen" data-tab="morgen"><span aria-hidden="true">🌅</span>Morgen</a>
+    <a href="#/abend" data-tab="abend"><span aria-hidden="true">🌙</span>Abend</a>
+    <a href="#/verlauf" data-tab="verlauf"><span aria-hidden="true">📖</span>Verlauf</a>
+    <a href="#/rueckblick" data-tab="rueckblick"><span aria-hidden="true">📊</span>Rückblick</a>
+    <a href="#/mehr" data-tab="mehr"><span aria-hidden="true">⚙️</span>Mehr</a>
+  </nav>
+
+  <div id="toasts" aria-live="polite"></div>
+  <dialog id="dlg"></dialog>
+
+  <script src="data.js"></script>
+  <script src="store.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
