@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const { Store, D, LISTS, uid, newStep10, contentFromDefaults } = window.AA;
-  const APP_VERSION = "2.0.0";
+  const APP_VERSION = "2.1.0";
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -96,8 +96,13 @@
     rueckblick: () => renderReview(),
     mehr: () => renderMore(),
     inhalte: (arg) => renderContentEditor(arg),
-    favoriten: () => renderFavorites()
+    favoriten: () => renderFavorites(),
+    gebete: () => window.AAREAD.renderPrayers(),
+    gebet: (arg) => window.AAREAD.renderPrayer(arg),
+    literatur: () => window.AAREAD.renderLibrary(),
+    lesen: (arg) => window.AAREAD.renderReader(arg)
   };
+  let cleanup = null; // z. B. PDF-Leser schließen
   function parseHash() {
     const parts = (location.hash || "").replace(/^#\/?/, "").split("/");
     return { name: routes[parts[0]] ? parts[0] : null, arg: parts[1] ? decodeURIComponent(parts[1]) : null };
@@ -108,8 +113,10 @@
       // Standard: morgens die Morgenroutine, ab 17 Uhr die Abendroutine
       name = new Date().getHours() >= 17 || new Date().getHours() < S().settings.dayStartHour ? "abend" : "morgen";
     }
-    const tab = { morgen: "morgen", abend: "abend", verlauf: "verlauf", tag: "verlauf", rueckblick: "rueckblick", mehr: "mehr", inhalte: "mehr", favoriten: "mehr" }[name];
+    const tab = { morgen: "morgen", abend: "abend", verlauf: "verlauf", tag: "verlauf", rueckblick: "rueckblick", mehr: "mehr", inhalte: "mehr", favoriten: "mehr", gebete: "mehr", gebet: "mehr", literatur: "mehr", lesen: "mehr" }[name];
     $$("#tabbar a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+    if (cleanup) { try { cleanup(); } catch (e) { /* ignorieren */ } cleanup = null; }
+    document.body.classList.toggle("reading", name === "lesen");
     routes[name](arg);
     renderHeader();
   }
@@ -365,8 +372,13 @@
         <textarea data-bind="evening.learned" rows="2">${esc(e.learned)}</textarea>
       </section>
       <section class="card" id="sec-good">
-        <h2>Drei tolle Dinge</h2>
-        ${[0, 1, 2].map((i) => `<input type="text" data-bind="evening.threeGood.${i}" value="${esc(e.threeGood[i])}" placeholder="${i + 1}." aria-label="Tolles Ding ${i + 1}">`).join("")}
+        <h2>Tolle Dinge</h2>
+        <p class="hint">Mindestens drei – gern mehr.</p>
+        ${e.threeGood.map((v, i) => i < 3
+          ? `<input type="text" data-bind="evening.threeGood.${i}" value="${esc(v)}" placeholder="${i + 1}." aria-label="Tolles Ding ${i + 1}">`
+          : `<div class="inrow"><input type="text" data-bind="evening.threeGood.${i}" value="${esc(v)}" placeholder="${i + 1}." aria-label="Tolles Ding ${i + 1}">
+             <button type="button" class="iconbtn sm" data-remove="evening.threeGood" data-idx="${i}" aria-label="Eintrag entfernen">×</button></div>`).join("")}
+        <button type="button" class="btn ghost sm" data-add="evening.threeGood" data-max="30">+ weiteres tolles Ding</button>
       </section>
       <section class="card">
         <h2>Programm heute</h2>
@@ -427,7 +439,7 @@
     bindDay(view, date, day);
     const commit = () => Store.commitDay(date, day);
     $("#e-done").onclick = () => {
-      if (e.threeGood.some((x) => !x.trim())) return focusMissing("#sec-good", "Bitte alle drei tollen Dinge eintragen.");
+      if (e.threeGood.slice(0, 3).some((x) => !x.trim())) return focusMissing("#sec-good", "Bitte mindestens drei tolle Dinge eintragen.");
       if (e.step10 === null) return focusMissing("#sec-s10", "Bitte noch beantworten: Ist ein 10. Schritt notwendig?");
       if (!e.done) { e.done = true; e.doneAt = new Date().toISOString(); commit(); Store.saveNow(); toast("Abendroutine abgeschlossen. Gute Nacht."); rerender(); }
       else toast("Ist bereits abgeschlossen – Änderungen werden trotzdem gespeichert.");
@@ -615,6 +627,11 @@
       const n = Object.keys(res.state.days).length;
       const ok = await dialog({ title: "Backup einspielen?", text: `Das Backup enthält ${n} Tage. Alle aktuellen Daten auf diesem Gerät werden dadurch ersetzt.`, okLabel: "Ersetzen", danger: true });
       if (!ok) return;
+      // Bibliothek: Dateien liegen nur auf diesem Gerät – vorhandene Einträge behalten, fehlende ergänzen
+      const here = S().library;
+      const lib = here.slice();
+      (res.state.library || []).forEach((b) => { if (!lib.some((x) => x.id === b.id)) lib.push(b); });
+      res.state.library = lib;
       await Store.replaceState(res.state);
       applyTheme();
       toast("Backup eingespielt.");
@@ -634,6 +651,13 @@
     view.innerHTML = `
       <h1 class="screen-title">⚙️ Mehr</h1>
       <section class="card">
+        <h2>Lesen</h2>
+        <div class="bigbtns">
+          <a class="bigbtn" href="#/gebete"><span aria-hidden="true">🙏</span><strong>Gebete</strong><small>${st.content.prayers.length} gespeichert</small></a>
+          <a class="bigbtn" href="#/literatur"><span aria-hidden="true">📚</span><strong>Literatur</strong><small>${st.library.length} ${st.library.length === 1 ? "Buch" : "Bücher"}</small></a>
+        </div>
+      </section>
+      <section class="card">
         <h2>Nüchternheit</h2>
         <label class="lbl" for="set-sober">Nüchtern seit</label>
         <input type="date" id="set-sober" value="${esc(st.settings.soberDate || "")}" max="${D.fromDate(new Date())}">
@@ -642,7 +666,7 @@
       <section class="card">
         <h2>Backup</h2>
         <p>${last ? `Letztes Backup: ${D.pretty(D.fromDate(new Date(last)))}` : "Noch kein Backup angelegt."}</p>
-        <p class="hint">Das Backup ist eine Datei mit allen Einträgen und Inhalten. Über „Teilen“ kannst du sie z. B. in Google Drive oder per Mail sichern. „Einspielen“ nimmt auch Daten aus Version 1 an.</p>
+        <p class="hint">Das Backup ist eine Datei mit allen Einträgen, Inhalten und Gebeten (die PDF-Bücher der Literatur sind nicht enthalten). Über „Teilen“ kannst du sie z. B. in Google Drive oder per Mail sichern. „Einspielen“ nimmt auch Daten aus Version 1 an.</p>
         <div class="btnrow">
           <button type="button" class="btn primary" id="b-make">Backup erstellen</button>
           <button type="button" class="btn" id="b-load">Backup einspielen</button>
@@ -788,6 +812,8 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
   }
+
+  window.AAUI = { $, $$, esc, toast, dialog, shareText, rerender, setCleanup: (fn) => { cleanup = fn; }, parseHash };
 
   // ---------- Start ----------
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") Store.saveNow(); });

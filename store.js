@@ -49,6 +49,7 @@
       feelings: simple(src.feelings),
       defects: simple(src.defects),
       program: simple(src.program),
+      prayers: [], // { id, title, text, fav, source }
       affirmations: grouped(src.affirmations),
       quotes: grouped(src.quotes)
     };
@@ -69,11 +70,12 @@
       schema: SCHEMA,
       createdAt: new Date().toISOString(),
       savedAt: null,
-      settings: { name: "", soberDate: null, dayStartHour: 4, backupReminderDays: 7, theme: "dark" },
+      settings: { name: "", soberDate: null, dayStartHour: 4, backupReminderDays: 7, theme: "dark", prayerFont: 19, readerNight: false, readerZoom: 1 },
       content: contentFromDefaults(window.AA_DEFAULTS),
       quoteQueue: [],
       quoteOfDay: null, // { date, id }
       days: {},
+      library: [], // { id, title, name, size, pages, addedAt, lastPage } – PDF-Dateien liegen separat in IndexedDB
       meta: { lastBackupAt: null, v1ImportedAt: null }
     };
   }
@@ -99,6 +101,7 @@
     out.meta = Object.assign(initState().meta, st.meta || {});
     out.content = Object.assign(contentFromDefaults(window.AA_DEFAULTS), st.content || {});
     out.days = out.days || {};
+    out.library = Array.isArray(st.library) ? st.library : [];
     for (const k of Object.keys(out.days)) {
       const t = newDay(), d = out.days[k];
       d.morning = Object.assign(t.morning, d.morning || {});
@@ -110,11 +113,20 @@
   }
 
   // ---------- Speicher: IndexedDB + Spiegel in localStorage ----------
+  let dbPromise = null;
   function openDB() {
+    if (!dbPromise) dbPromise = openDBRaw().then((db) => { db.onversionchange = () => { db.close(); dbPromise = null; }; return db; }).catch((e) => { dbPromise = null; throw e; });
+    return dbPromise;
+  }
+  function openDBRaw() {
     return new Promise((resolve, reject) => {
       if (!("indexedDB" in window)) return reject(new Error("no idb"));
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+      const req = indexedDB.open(DB_NAME, 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+        if (!db.objectStoreNames.contains("files")) db.createObjectStore("files");
+      };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -134,6 +146,20 @@
       tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
     });
   }
+
+  async function fileOp(mode, fn) {
+    const db = await openDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction("files", mode);
+      const r = fn(tx.objectStore("files"));
+      tx.oncomplete = () => res(r && r.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+    });
+  }
+  const Files = {
+    put: (id, blob) => fileOp("readwrite", (s) => s.put(blob, id)),
+    get: (id) => fileOp("readonly", (s) => s.get(id)),
+    del: (id) => fileOp("readwrite", (s) => s.delete(id))
+  };
 
   const Store = {
     state: null,
@@ -422,5 +448,5 @@
     return out;
   }
 
-  window.AA = { Store, D, LISTS, uid, clone, newDay, newStep10, contentFromDefaults, initState, SCHEMA };
+  window.AA = { Store, Files, D, LISTS, uid, clone, newDay, newStep10, contentFromDefaults, initState, SCHEMA };
 })();

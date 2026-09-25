@@ -194,3 +194,38 @@ dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--s
 dialog::backdrop { background: rgba(0,0,0,.55); }
 .dlg { padding: 18px; }
 .dlg h3 { font-size: 18px; margin-bottom: 8px; }
+
+/* ---------- Lesen: Gebete & Literatur ---------- */
+.bigbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bigbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px; min-height: 88px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); text-decoration: none; }
+.bigbtn span { font-size: 26px; line-height: 1.1; }
+.bigbtn small { color: var(--muted); font-size: 13px; }
+.prayerlist, .booklist, .hits { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-direction: column; gap: 6px; }
+.prayerlist a { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 12px 14px; min-height: 48px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; text-decoration: none; }
+.favmark { color: var(--warn); }
+.prayer-title { font-size: 20px !important; margin-bottom: 12px !important; }
+.prayer-text { white-space: pre-wrap; line-height: 1.6; }
+.center-row { justify-content: center; }
+.iconbtn.on { color: var(--warn); border-color: var(--warn); }
+.pager { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0; }
+.pager .btn { max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 24px; }
+.booklist li { display: flex; gap: 6px; align-items: center; }
+.book { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; text-decoration: none; }
+.book strong { overflow: hidden; text-overflow: ellipsis; }
+.book small { color: var(--muted); }
+
+/* PDF-Leser */
+body.reading .topbar { position: static; }
+body.reading main { max-width: none; padding: 0 0 24px; }
+.readbar { position: sticky; top: 0; z-index: 9; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.rtitle { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readbar .btn.sm { padding: 6px 8px; font-variant-numeric: tabular-nums; }
+.searchbox { padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); max-height: 55vh; overflow-y: auto; }
+.hits button { width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.pagescroll { overflow-x: auto; }
+.pages { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 8px auto; }
+.pg { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); flex: none; }
+.pg canvas { display: block; position: relative; }
+.pgnum { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 20px; }
+.pages.night .pg { background: #1a1a1a; }
+.pages.night canvas { filter: invert(.9) hue-rotate(180deg); }
