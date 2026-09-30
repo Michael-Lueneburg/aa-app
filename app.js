@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const { Store, D, LISTS, uid, newStep10, contentFromDefaults } = window.AA;
-  const APP_VERSION = "2.1.0";
+  const APP_VERSION = "2.2.0";
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -100,24 +100,26 @@
     gebete: () => window.AAREAD.renderPrayers(),
     gebet: (arg) => window.AAREAD.renderPrayer(arg),
     literatur: () => window.AAREAD.renderLibrary(),
-    lesen: (arg) => window.AAREAD.renderReader(arg)
+    lesen: (arg) => window.AAREAD.renderReader(arg),
+    inventur: (arg, arg2) => renderInventory(arg, arg2)
   };
   let cleanup = null; // z. B. PDF-Leser schließen
+  const setCleanup = (fn) => { cleanup = fn; };
   function parseHash() {
     const parts = (location.hash || "").replace(/^#\/?/, "").split("/");
-    return { name: routes[parts[0]] ? parts[0] : null, arg: parts[1] ? decodeURIComponent(parts[1]) : null };
+    return { name: routes[parts[0]] ? parts[0] : null, arg: parts[1] ? decodeURIComponent(parts[1]) : null, arg2: parts[2] ? decodeURIComponent(parts[2]) : null };
   }
   function route() {
-    let { name, arg } = parseHash();
+    let { name, arg, arg2 } = parseHash();
     if (!name) {
       // Standard: morgens die Morgenroutine, ab 17 Uhr die Abendroutine
       name = new Date().getHours() >= 17 || new Date().getHours() < S().settings.dayStartHour ? "abend" : "morgen";
     }
-    const tab = { morgen: "morgen", abend: "abend", verlauf: "verlauf", tag: "verlauf", rueckblick: "rueckblick", mehr: "mehr", inhalte: "mehr", favoriten: "mehr", gebete: "mehr", gebet: "mehr", literatur: "mehr", lesen: "mehr" }[name];
+    const tab = { morgen: "morgen", abend: "abend", verlauf: "verlauf", tag: "verlauf", rueckblick: "rueckblick", mehr: "mehr", inhalte: "mehr", favoriten: "mehr", gebete: "mehr", gebet: "mehr", literatur: "mehr", lesen: "mehr", inventur: "abend" }[name];
     $$("#tabbar a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
     if (cleanup) { try { cleanup(); } catch (e) { /* ignorieren */ } cleanup = null; }
     document.body.classList.toggle("reading", name === "lesen");
-    routes[name](arg);
+    routes[name](arg, arg2);
     renderHeader();
   }
   function rerender() {
@@ -198,13 +200,19 @@
       </div>`).join("") +
       (arr.length < max ? `<button type="button" class="btn ghost sm" data-add="${path}" data-max="${max}">+ hinzufügen</button>` : "");
   }
-  function chips(path, options, selected, cls = "") {
+  function chips(path, options, selected, cls = "", limit = 0) {
     const all = options.slice();
     selected.forEach((s) => { if (!all.includes(s)) all.push(s); }); // gelöschte, aber gewählte Einträge bleiben sichtbar
-    return `<div class="chips ${cls}">` + all.map((o) => {
+    const chip = (o) => {
       const on = selected.includes(o);
       return `<button type="button" class="chip ${on ? "on" : ""}" aria-pressed="${on}" data-toggle="${path}" data-value="${esc(o)}">${esc(o)}</button>`;
-    }).join("") + `</div>`;
+    };
+    if (!limit || all.length <= limit + 2) return `<div class="chips ${cls}">` + all.map(chip).join("") + `</div>`;
+    // Lange Listen: erste Einträge + Ausgewählte sichtbar, Rest aufklappbar
+    const first = all.filter((o, i) => i < limit || selected.includes(o));
+    const rest = all.filter((o) => !first.includes(o));
+    return `<div class="chips ${cls}">` + first.map(chip).join("") + `</div>` +
+      `<details class="morechips"><summary>Weitere anzeigen (${rest.length})</summary><div class="chips ${cls}">${rest.map(chip).join("")}</div></details>`;
   }
   function seg(path, value, labels = ["Nein", "Ja"]) {
     return `<div class="seg" role="group">
@@ -351,6 +359,146 @@
     toast(msg);
   }
 
+  // ---------- 10. Schritt (gemeinsam für Abend und Schnell-Inventur) ----------
+  function myStep7Prayer() {
+    return S().content.prayers.find((p) => /7\.?\s*schritt/i.test(p.title) && p.text.trim()) || null;
+  }
+  function oppHtml(t) {
+    const o = Store.opposites(t);
+    return o.length ? `<div class="chips">${o.map((x) => `<span class="chip asset">${esc(x)}</span>`).join("")}</div>`
+      : `<p class="hint">Wähle oben deinen Anteil – hier erscheint dann das Gegenteil.</p>`;
+  }
+  function prayHtml(t) {
+    const p = Store.personalPrayer(t);
+    return p ? esc(p) : `<span class="hint">Wähle deinen Anteil aus, dann entsteht hier dein persönliches Gebet.</span>`;
+  }
+  function step10Form(p, t) {
+    const mine = myStep7Prayer();
+    return `<div data-s10="${p}">
+      <label class="lbl">Wer oder was? <span class="muted">(Person, Situation, ich selbst, Gott …)</span></label>
+      <input type="text" data-bind="${p}.who" value="${esc(t.who)}" placeholder="Auf wen / worüber bin ich wütend, ängstlich, verletzt?">
+      <label class="lbl">Was ist passiert?</label>
+      <textarea data-bind="${p}.what" rows="3">${esc(t.what)}</textarea>
+
+      <label class="lbl">Das beeinflusst bei mir …</label>
+      ${chips(p + ".affects", texts("affects"), t.affects)}
+
+      <label class="lbl">Gefühle</label>
+      ${chips(p + ".feelings", texts("feelings"), t.feelings)}
+      <input type="text" data-bind="${p}.feelingsOther" value="${esc(t.feelingsOther)}" placeholder="Anderes Gefühl">
+
+      <label class="lbl">Mein Anteil – Charakterfehler</label>
+      ${chips(p + ".defects", texts("defects"), t.defects, "", 13)}
+      <input type="text" data-bind="${p}.defectsOther" value="${esc(t.defectsOther)}" placeholder="Eigener Charakterfehler">
+
+      <label class="lbl">Das Gegenteil – was ich stattdessen üben will</label>
+      <div class="opp">${oppHtml(t)}</div>
+      <input type="text" data-bind="${p}.assetsOther" value="${esc(t.assetsOther)}" placeholder="Weitere Eigenschaft (optional)">
+
+      <div class="praybox">
+        <h3>7.-Schritt-Gebet</h3>
+        ${mine ? `<details open><summary>${esc(mine.title)} <span class="muted">(aus deinen Gebeten)</span></summary><div class="prayer-text">${esc(mine.text)}</div></details>`
+          : `<p class="hint">Tipp: Füge unter Mehr → Gebete deine Gebetesammlung hinzu, dann steht hier auch dein „7. Schritt Gebet“.</p>`}
+        <p class="hint">Persönlich für heute:</p>
+        <div class="ppray prayer-text">${prayHtml(t)}</div>
+        <label class="check"><input type="checkbox" data-bind="${p}.prayed" ${t.prayed ? "checked" : ""}> Gebet gesprochen</label>
+      </div>
+
+      <label class="lbl">Was habe ich daraus gelernt / was hätte ich anders machen können?</label>
+      <textarea data-bind="${p}.learn" rows="2">${esc(t.learn)}</textarea>
+      <label class="lbl">Was hat mich gehindert?</label>
+      <input type="text" data-bind="${p}.hinder" value="${esc(t.hinder)}">
+
+      <label class="lbl">Muss ich Wiedergutmachung leisten oder etwas klären?</label>
+      ${seg(p + ".amend", t.amend)}
+      ${t.amend === true ? `<input type="text" data-bind="${p}.amendWhat" value="${esc(t.amendWhat)}" placeholder="Was?">
+        <label class="check"><input type="checkbox" data-bind="${p}.amendDone" ${t.amendDone ? "checked" : ""}> erledigt</label>` : ""}
+
+      <label class="lbl">Wem kann ich jetzt helfen?</label>
+      <input type="text" data-bind="${p}.help" value="${esc(t.help)}" placeholder="Name oder Idee">
+      <label class="lbl">Habe ich einen Newcomer oder AA-Freund angerufen?</label>
+      ${seg(p + ".newcomerCalled", t.newcomerCalled)}
+      ${t.newcomerCalled === true ? `<input type="text" data-bind="${p}.newcomerName" value="${esc(t.newcomerName)}" placeholder="Name (optional)">` : ""}
+
+      <label class="lbl">Habe ich es mit jemandem geteilt?</label>
+      ${seg(p + ".talked", t.talked)}
+      ${t.talked === true ? `<input type="text" data-bind="${p}.talkedWho" value="${esc(t.talkedWho)}" placeholder="Mit wem?">` : ""}
+      ${t.talked === false ? `<input type="text" data-bind="${p}.talkedWhy" value="${esc(t.talkedWhy)}" placeholder="Warum (noch) nicht? Mit wem könnte ich?">` : ""}
+    </div>`;
+  }
+  // Gegenteile und Gebet live aktualisieren, ohne die Seite neu aufzubauen
+  let liveDay = null, liveBound = false;
+  function liveStep10(day) {
+    liveDay = day;
+    if (liveBound) return;
+    liveBound = true;
+    const upd = () => $$("[data-s10]").forEach((box) => {
+      const t = liveDay && getPath(liveDay, box.dataset.s10);
+      if (!t) return;
+      $(".opp", box).innerHTML = oppHtml(t);
+      $(".ppray", box).innerHTML = prayHtml(t);
+    });
+    view.addEventListener("input", upd);
+    view.addEventListener("click", () => setTimeout(upd, 0));
+  }
+
+  // ---------- Schnell-Inventur ----------
+  function renderInventory(argDate, id) {
+    const today = Store.today();
+    const date = D.valid(argDate) && argDate <= today ? argDate : today;
+    const day = Store.draftDay(date);
+    day.inventories = day.inventories || [];
+    let t = id && day.inventories.find((x) => x.id === id);
+    if (!t) {
+      const now = new Date();
+      t = Object.assign(newStep10(), { id: uid(), time: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, done: false });
+      day.inventories.push(t);
+      history.replaceState(null, "", `#/inventur/${date}/${t.id}`);
+    }
+    const idx = day.inventories.indexOf(t);
+    view.innerHTML = `
+      <div class="datebar"><a class="iconbtn" href="#/abend${date === today ? "" : "/" + date}" aria-label="Zurück">‹</a>
+        <div class="dateinfo"><strong>⚡ 10. Schritt</strong><span>${D.pretty(date)}${t.time ? " · " + t.time : ""}</span></div><span></span></div>
+      <p class="hint center">Kurz festhalten, was mich gerade stört – meinen Anteil sehen, abgeben, weitergehen.</p>
+      <section class="card">${step10Form("inventories." + idx, t)}</section>
+      <section class="card actions">
+        <button type="button" class="btn primary wide" id="i-done">${t.done ? "✓ Festgehalten" : "Fertig"}</button>
+        <div class="btnrow">
+          <button type="button" class="btn" id="i-share">Teilen</button>
+          <button type="button" class="btn" id="i-copy">Kopieren</button>
+        </div>
+        <div class="center"><button type="button" class="btn danger-ghost sm" id="i-del">Inventur löschen</button></div>
+      </section>`;
+    bindDay(view, date, day);
+    liveStep10(day);
+    const text = () => [`10. Schritt · ${D.pretty(date)}${t.time ? " " + t.time : ""}`, ...Store.step10Lines(t),
+      Store.personalPrayer(t) && t.prayed ? "\n" + Store.personalPrayer(t) : ""].filter(Boolean).join("\n");
+    const isEmpty = () => !(t.who.trim() || t.what.trim() || t.defects.length || t.feelings.length || t.affects.length || t.defectsOther.trim());
+    setCleanup(() => {
+      if (location.hash.includes(t.id)) return; // nur neu aufgebaut, nicht verlassen
+      if (isEmpty() && !t.done) {
+        const i = day.inventories.indexOf(t);
+        if (i >= 0) day.inventories.splice(i, 1);
+        if (Store.getDay(date)) Store.commitDay(date, day);
+      }
+    });
+    $("#i-done").onclick = () => {
+      if (isEmpty()) return toast("Bitte mindestens festhalten, wer oder was los war.");
+      t.done = true; Store.commitDay(date, day); Store.saveNow();
+      toast("Festgehalten.", { action: "Teilen", onAction: () => shareText(text()) });
+      location.hash = "#/abend" + (date === today ? "" : "/" + date);
+    };
+    $("#i-share").onclick = () => shareText(text());
+    $("#i-copy").onclick = () => copyText(text());
+    $("#i-del").onclick = async () => {
+      if (!(await dialog({ title: "Inventur löschen?", okLabel: "Löschen", danger: true }))) return;
+      const i = day.inventories.indexOf(t); if (i >= 0) day.inventories.splice(i, 1);
+      t.done = false; t.who = t.what = ""; t.defects = []; t.feelings = []; t.affects = [];
+      if (Store.getDay(date)) Store.commitDay(date, day);
+      location.hash = "#/abend" + (date === today ? "" : "/" + date);
+    };
+  }
+
   // ---------- Abend ----------
   function renderEvening(argDate) {
     const today = Store.today();
@@ -392,39 +540,10 @@
         ${e.step10 === false ? `
           <label class="lbl">Wofür bin ich heute besonders dankbar?</label>
           <input type="text" data-bind="evening.specialThanks" value="${esc(e.specialThanks)}">` : ""}
-        ${e.step10 === true && t ? `
-          <div class="step10">
-            <label class="lbl">Was war los?</label>
-            <textarea data-bind="evening.s10.what" rows="3">${esc(t.what)}</textarea>
-
-            <label class="lbl">Gefühle</label>
-            ${chips("evening.s10.feelings", texts("feelings"), t.feelings)}
-            <input type="text" data-bind="evening.s10.feelingsOther" value="${esc(t.feelingsOther)}" placeholder="Anderes Gefühl">
-
-            <label class="lbl">Charakterfehler</label>
-            ${chips("evening.s10.defects", texts("defects"), t.defects)}
-            <input type="text" data-bind="evening.s10.defectsOther" value="${esc(t.defectsOther)}" placeholder="Eigenes">
-
-            <label class="lbl">Was habe ich daraus gelernt / was hätte ich anders machen können?</label>
-            <textarea data-bind="evening.s10.learn" rows="2">${esc(t.learn)}</textarea>
-
-            <label class="lbl">Was hat mich gehindert?</label>
-            <input type="text" data-bind="evening.s10.hinder" value="${esc(t.hinder)}">
-
-            <label class="lbl">Habe ich mit jemandem darüber gesprochen?</label>
-            ${seg("evening.s10.talked", t.talked)}
-            ${t.talked === true ? `<input type="text" data-bind="evening.s10.talkedWho" value="${esc(t.talkedWho)}" placeholder="Mit wem?">` : ""}
-            ${t.talked === false ? `<input type="text" data-bind="evening.s10.talkedWhy" value="${esc(t.talkedWhy)}" placeholder="Warum nicht?">` : ""}
-
-            <label class="lbl">Muss ich Wiedergutmachung leisten oder etwas klären?</label>
-            ${seg("evening.s10.amend", t.amend)}
-            ${t.amend === true ? `<input type="text" data-bind="evening.s10.amendWhat" value="${esc(t.amendWhat)}" placeholder="Was?">
-              <label class="check"><input type="checkbox" data-bind="evening.s10.amendDone" ${t.amendDone ? "checked" : ""}> erledigt</label>` : ""}
-
-            <label class="lbl">Habe ich einen Newcomer oder AA-Freund angerufen?</label>
-            ${seg("evening.s10.newcomerCalled", t.newcomerCalled)}
-            ${t.newcomerCalled === true ? `<input type="text" data-bind="evening.s10.newcomerName" value="${esc(t.newcomerName)}" placeholder="Name (optional)">` : ""}
-          </div>` : ""}
+        ${(day.inventories || []).length ? `<div class="invlist"><p class="hint">Heute schon festgehalten (Schnell-Inventur):</p>
+          ${day.inventories.map((x) => `<a class="invitem" href="#/inventur/${date}/${x.id}"><strong>${esc(x.time || "")}</strong> ${esc(x.who || x.what || "ohne Titel")}${x.defects.length ? ` <span class="muted">· ${esc(x.defects.slice(0, 2).join(", "))}</span>` : ""}</a>`).join("")}</div>` : ""}
+        ${e.step10 === true && t ? `<div class="step10">${step10Form("evening.s10", t)}</div>` : ""}
+        <a class="btn ghost sm" href="#/inventur/${date}">⚡ Weitere Situation festhalten</a>
       </section>
 
       <section class="card actions">
@@ -437,6 +556,7 @@
       </section>`;
 
     bindDay(view, date, day);
+    liveStep10(day);
     const commit = () => Store.commitDay(date, day);
     $("#e-done").onclick = () => {
       if (e.threeGood.slice(0, 3).some((x) => !x.trim())) return focusMissing("#sec-good", "Bitte mindestens drei tolle Dinge eintragen.");
@@ -509,7 +629,8 @@
       <section class="card"><pre class="daytext">${esc(mt.split("\n").length > 1 ? mt : "🌅 Morgen – keine Einträge")}</pre>
         <a class="btn sm" href="#/morgen/${date}">Morgen bearbeiten</a></section>
       <section class="card"><pre class="daytext">${esc(et || "🌙 Abend – keine Einträge")}</pre>
-        <a class="btn sm" href="#/abend/${date}">Abend bearbeiten</a></section>
+        <div class="btnrow"><a class="btn sm" href="#/abend/${date}">Abend bearbeiten</a>
+        ${(day.inventories || []).map((x) => `<a class="btn sm" href="#/inventur/${date}/${x.id}">⚡ ${esc(x.time || "")} bearbeiten</a>`).join("")}</div></section>
       <section class="card actions">
         <div class="btnrow">
           <button type="button" class="btn" id="d-share">Teilen</button>
@@ -563,7 +684,7 @@
     const a = Store.analyze(rangeSel);
     const opts = [[30, "30 Tage"], [90, "90 Tage"], [365, "1 Jahr"], [0, "Alles"]];
     const openAmends = a.amends.filter((x) => !x.done), doneAmends = a.amends.filter((x) => x.done);
-    const amendRow = (x) => `<li><label class="check"><input type="checkbox" data-amend="${x.date}" ${x.done ? "checked" : ""}>
+    const amendRow = (x) => `<li><label class="check"><input type="checkbox" data-amend="${x.date}|${x.ref}" ${x.done ? "checked" : ""}>
         <span><strong>${D.short(x.date)}</strong> ${esc(x.text || "(ohne Beschreibung)")}</span></label></li>`;
     view.innerHTML = `
       <h1 class="screen-title">📊 Rückblick</h1>
@@ -582,11 +703,12 @@
       </section>
       <section class="card">
         <h2>10. Schritt</h2>
-        <p>An <strong>${a.s10}</strong> ${a.s10 === 1 ? "Tag" : "Tagen"} gemacht.
+        <p><strong>${a.s10}</strong> ${a.s10 === 1 ? "Inventur" : "Inventuren"} (Abend und Schnell-Inventur).
           ${a.talkedYes + a.talkedNo ? `Darüber gesprochen: ${a.talkedYes} von ${a.talkedYes + a.talkedNo}.` : ""}
           ${a.s10 ? `Newcomer/AA-Freund angerufen: ${a.newcomerYes}×.` : ""}</p>
         <h3>Gefühle</h3>${bars(a.feelings, a.s10, "Gefühle")}
         <h3>Charakterfehler</h3>${bars(a.defects, a.s10, "Charakterfehler")}
+        <h3>Das beeinflusst bei mir</h3>${bars(a.affects, a.s10, "Das beeinflusst bei mir")}
       </section>
       <section class="card">
         <h2>Offene Klärungen & Wiedergutmachungen</h2>
@@ -599,8 +721,10 @@
     bindSobriety();
     $$("[data-range]").forEach((b) => b.onclick = () => { rangeSel = Number(b.dataset.range); rerender(); });
     $$("[data-amend]").forEach((c) => c.onchange = () => {
-      const d = Store.getDay(c.dataset.amend);
-      if (d && d.evening.s10) { d.evening.s10.amendDone = c.checked; Store.commitDay(c.dataset.amend, d); rerender(); }
+      const [date, ref] = c.dataset.amend.split("|");
+      const d = Store.getDay(date);
+      const t = d && (ref === "e" ? d.evening.s10 : (d.inventories || []).find((x) => x.id === ref));
+      if (t) { t.amendDone = c.checked; Store.commitDay(date, d); rerender(); }
     });
   }
 
@@ -701,7 +825,7 @@
         <p class="hint">Alle Einträge liegen nur auf diesem Gerät. Nichts wird an einen Server geschickt.</p>
         <button type="button" class="btn danger-ghost" id="wipe">Alle Daten löschen</button>
       </section>
-      <p class="hint center">AA-Reflex ${APP_VERSION}</p>`;
+      <div class="center"><p class="hint">AA-Reflex ${APP_VERSION}</p><button type="button" class="btn sm" id="upd-check">Nach Updates suchen</button></div>`;
 
     const s = st.settings;
     $("#set-sober").onchange = (e) => { s.soberDate = D.valid(e.target.value) ? e.target.value : null; Store.saveNow(); };
@@ -710,6 +834,7 @@
     $("#set-remind").onchange = (e) => { s.backupReminderDays = Number(e.target.value); Store.saveNow(); };
     $("#set-theme").onchange = (e) => { s.theme = e.target.value; applyTheme(); Store.saveNow(); };
     $("#b-make").onclick = createBackup;
+    $("#upd-check").onclick = checkForUpdate;
     $("#b-load").onclick = () => $("#b-file").click();
     $("#b-file").onchange = (e) => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ""; };
     $("#wipe").onclick = async () => {
@@ -734,8 +859,10 @@
     const save = () => Store.scheduleSave();
     let body;
     if (!meta.grouped) {
-      body = `<ul class="editlist">${list.map((it, i) => `<li>
-          <input type="text" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Eintrag ${i + 1}">
+      body = `${meta.pairs ? `<p class="hint">Links der Charakterfehler, rechts das Gegenteil – daraus entstehen im 10. Schritt die Eigenschaften und das Gebet.</p>` : ""}<ul class="editlist">${list.map((it, i) => `<li>
+          ${meta.pairs ? `<div class="pairin"><input type="text" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Charakterfehler ${i + 1}" placeholder="Charakterfehler">
+            <input type="text" data-edit-opp="${it.id}" value="${esc(it.opposite || "")}" aria-label="Gegenteil ${i + 1}" placeholder="Gegenteil"></div>`
+          : `<input type="text" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Eintrag ${i + 1}">`}
           <button type="button" class="iconbtn sm" data-up="${i}" ${i === 0 ? "disabled" : ""} aria-label="nach oben">↑</button>
           <button type="button" class="iconbtn sm" data-del="${it.id}" aria-label="löschen">×</button></li>`).join("")}</ul>
         <button type="button" class="btn ghost sm" data-new="">+ Eintrag</button>`;
@@ -757,6 +884,7 @@
         <button type="button" class="btn danger-ghost sm" id="reset-list">Auf Standard zurücksetzen</button></section>`;
 
     $$("[data-edit]").forEach((el) => el.oninput = () => { list.find((x) => x.id === el.dataset.edit).text = el.value; save(); });
+    $$("[data-edit-opp]").forEach((el) => el.oninput = () => { list.find((x) => x.id === el.dataset.editOpp).opposite = el.value; save(); });
     $$("[data-del]").forEach((el) => el.onclick = () => {
       const i = list.findIndex((x) => x.id === el.dataset.del);
       const [removed] = list.splice(i, 1); save(); rerender();
@@ -765,7 +893,7 @@
     $$("[data-up]").forEach((el) => el.onclick = () => { const i = Number(el.dataset.up); [list[i - 1], list[i]] = [list[i], list[i - 1]]; save(); rerender(); });
     $$("[data-fav]").forEach((el) => el.onclick = () => { const it = list.find((x) => x.id === el.dataset.fav); it.fav = !it.fav; save(); rerender(); });
     $$("[data-new]").forEach((el) => el.onclick = () => {
-      const item = meta.grouped ? { id: uid(), cat: el.dataset.new, text: "", fav: false } : { id: uid(), text: "" };
+      const item = meta.grouped ? { id: uid(), cat: el.dataset.new, text: "", fav: false } : (meta.pairs ? { id: uid(), text: "", opposite: "" } : { id: uid(), text: "" });
       if (meta.grouped) { const last = list.map((x) => x.cat).lastIndexOf(el.dataset.new); list.splice(last + 1, 0, item); } else list.push(item);
       save(); rerender(); const inp = $(`[data-edit="${item.id}"]`); inp && inp.focus();
     });
@@ -799,21 +927,41 @@
   }
 
   // ---------- Service Worker / Updates ----------
+  let swReg = null;
+  const bootTime = Date.now();
+  function applyUpdate(w) { if (w) w.postMessage("skipWaiting"); }
+  function offerUpdate(w) {
+    // Beim Start (erste Sekunden) sofort übernehmen, später dauerhaften Hinweis zeigen
+    if (Date.now() - bootTime < 10000) return applyUpdate(w);
+    toast("Neue Version verfügbar.", { action: "Jetzt aktualisieren", ms: 3600000, onAction: () => applyUpdate(w) });
+  }
   function registerSW() {
     if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
     navigator.serviceWorker.register("sw.js").then((reg) => {
-      const offer = (w) => toast("Neue Version verfügbar.", { action: "Aktualisieren", ms: 20000, onAction: () => w.postMessage("skipWaiting") });
-      if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+      swReg = reg;
+      if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
       reg.addEventListener("updatefound", () => {
         const w = reg.installing;
-        w && w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) offer(w); });
+        w && w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) offerUpdate(w); });
       });
+      // Beim Zurückkehren in die App nach Updates schauen
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
     }).catch(() => {});
     let reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
   }
+  async function checkForUpdate() {
+    if (!swReg) return toast("Updates sind nur in der installierten App möglich.");
+    toast("Suche nach Updates …");
+    try { await swReg.update(); } catch (e) { return toast("Keine Verbindung – später noch einmal versuchen."); }
+    setTimeout(() => {
+      const w = swReg.waiting || swReg.installing;
+      if (w) { toast("Neue Version gefunden – wird geladen …"); if (swReg.waiting) applyUpdate(swReg.waiting); else w.addEventListener("statechange", () => { if (w.state === "installed") applyUpdate(w); }); }
+      else toast(`Du hast die neueste Version (${APP_VERSION}).`);
+    }, 1500);
+  }
 
-  window.AAUI = { $, $$, esc, toast, dialog, shareText, rerender, setCleanup: (fn) => { cleanup = fn; }, parseHash };
+  window.AAUI = { $, $$, esc, toast, dialog, shareText, rerender, setCleanup, parseHash };
 
   // ---------- Start ----------
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") Store.saveNow(); });

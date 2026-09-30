@@ -47,7 +47,8 @@
       ninePoints: simple(src.ninePoints),
       selfcareChips: simple(src.selfcareChips),
       feelings: simple(src.feelings),
-      defects: simple(src.defects),
+      defects: src.defects.map(([text, opposite]) => ({ id: uid(), text, opposite })),
+      affects: simple(src.affects),
       program: simple(src.program),
       prayers: [], // { id, title, text, fav, source }
       affirmations: grouped(src.affirmations),
@@ -59,8 +60,9 @@
     selfcareChips: { title: "Selbstfürsorge – Schnellauswahl", grouped: false },
     affirmations: { title: "Kraftsätze", grouped: true },
     quotes: { title: "Sprüche", grouped: true },
+    affects: { title: "10. Schritt – Das beeinflusst bei mir", grouped: false },
     feelings: { title: "10. Schritt – Gefühle", grouped: false },
-    defects: { title: "10. Schritt – Charakterfehler", grouped: false },
+    defects: { title: "10. Schritt – Charakterfehler & Gegenteil", grouped: false, pairs: true },
     program: { title: "Programm-Check", grouped: false }
   };
 
@@ -76,7 +78,7 @@
       quoteOfDay: null, // { date, id }
       days: {},
       library: [], // { id, title, name, size, pages, addedAt, lastPage } – PDF-Dateien liegen separat in IndexedDB
-      meta: { lastBackupAt: null, v1ImportedAt: null }
+      meta: { lastBackupAt: null, v1ImportedAt: null, contentRev: 2 }
     };
   }
 
@@ -84,11 +86,13 @@
     return {
       morning: { thankful: [""], selfcare: [""], selfcareChips: [], focus: [], focusNote: "", affirmation: null, quote: null, done: false, doneAt: null },
       evening: { goodForSomeone: "", learned: "", threeGood: ["", "", ""], programDone: [], step10: null, specialThanks: "", s10: null, done: false, doneAt: null },
+      inventories: [], // Schnell-Inventuren (10. Schritt tagsüber), gleicher Aufbau wie s10 plus id/time/done
       updatedAt: null
     };
   }
   function newStep10() {
-    return { what: "", feelings: [], feelingsOther: "", defects: [], defectsOther: "", learn: "", hinder: "",
+    return { who: "", what: "", affects: [], feelings: [], feelingsOther: "", defects: [], defectsOther: "", assetsOther: "", learn: "", hinder: "",
+      prayed: false, help: "",
       talked: null, talkedWho: "", talkedWhy: "", amend: null, amendWhat: "", amendDone: false,
       newcomerCalled: null, newcomerName: "" };
   }
@@ -98,15 +102,25 @@
     const base = initState();
     const out = Object.assign(base, st);
     out.settings = Object.assign(initState().settings, st.settings || {});
-    out.meta = Object.assign(initState().meta, st.meta || {});
+    out.meta = Object.assign(initState().meta, { contentRev: 1 }, st.meta || {});
     out.content = Object.assign(contentFromDefaults(window.AA_DEFAULTS), st.content || {});
     out.days = out.days || {};
+    // Inhalte auf Stand 2.2 bringen: Gegenteile ergänzen, erweiterte Fehlerliste einmalig anhängen
+    const defPairs = window.AA_DEFAULTS.defects;
+    const oppOf = Object.fromEntries(defPairs);
+    out.content.defects = (out.content.defects || []).map((x) => Object.assign({ opposite: oppOf[x.text] || "" }, x));
+    if ((out.meta.contentRev || 1) < 2) {
+      const have = new Set(out.content.defects.map((x) => x.text));
+      defPairs.forEach(([text, opposite]) => { if (!have.has(text)) out.content.defects.push({ id: uid(), text, opposite }); });
+      out.meta.contentRev = 2;
+    }
     out.library = Array.isArray(st.library) ? st.library : [];
     for (const k of Object.keys(out.days)) {
       const t = newDay(), d = out.days[k];
       d.morning = Object.assign(t.morning, d.morning || {});
       d.evening = Object.assign(t.evening, d.evening || {});
       if (d.evening.s10) d.evening.s10 = Object.assign(newStep10(), d.evening.s10);
+      d.inventories = (d.inventories || []).map((x) => Object.assign(newStep10(), x));
     }
     out.schema = SCHEMA;
     return out;
@@ -225,7 +239,7 @@
       const m = day.morning, e = day.evening;
       const any = (a) => (a || []).some((x) => String(x).trim());
       return !(any(m.thankful) || any(m.selfcare) || m.selfcareChips.length || m.focus.length || m.focusNote.trim() || m.affirmation ||
-        e.goodForSomeone.trim() || e.learned.trim() || any(e.threeGood) || e.programDone.length || e.step10 !== null || m.done || e.done);
+        e.goodForSomeone.trim() || e.learned.trim() || any(e.threeGood) || e.programDone.length || e.step10 !== null || m.done || e.done || (day.inventories || []).length);
     },
     deleteDay(date) { delete this.state.days[date]; this.scheduleSave(); },
 
@@ -299,7 +313,7 @@
       const from = rangeDays ? D.add(today, -(rangeDays - 1)) : null;
       const keys = this.daysInRange(from).filter((k) => k <= today);
       const count = (map, k) => { map[k] = (map[k] || 0) + 1; };
-      const feelings = {}, defects = {}, program = {};
+      const feelings = {}, defects = {}, program = {}, affects = {};
       let s10 = 0, talkedYes = 0, talkedNo = 0, newcomerYes = 0, mDone = 0, eDone = 0, active = 0;
       const amends = [];
       for (const k of keys) {
@@ -309,18 +323,22 @@
         if (day.morning.done) mDone++;
         if (day.evening.done) eDone++;
         day.evening.programDone.forEach((p) => count(program, p));
-        if (day.evening.step10 === true && day.evening.s10) {
-          const t = day.evening.s10; s10++;
+        const invs = [];
+        if (day.evening.step10 === true && day.evening.s10) invs.push({ t: day.evening.s10, ref: "e" });
+        (day.inventories || []).forEach((t) => invs.push({ t, ref: t.id }));
+        for (const { t, ref } of invs) {
+          s10++;
           t.feelings.forEach((f) => count(feelings, f));
           t.defects.forEach((f) => count(defects, f));
+          (t.affects || []).forEach((f) => count(affects, f));
           if (t.talked === true) talkedYes++; else if (t.talked === false) talkedNo++;
           if (t.newcomerCalled === true) newcomerYes++;
-          if (t.amend === true) amends.push({ date: k, text: t.amendWhat, done: !!t.amendDone });
+          if (t.amend === true) amends.push({ date: k, ref, text: t.amendWhat, done: !!t.amendDone });
         }
       }
       const sorted = (m) => Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return { from, to: today, span: from ? D.diff(from, today) + 1 : null, active, mDone, eDone, s10, talkedYes, talkedNo, newcomerYes,
-        feelings: sorted(feelings), defects: sorted(defects), program: sorted(program), amends: amends.reverse() };
+        feelings: sorted(feelings), defects: sorted(defects), affects: sorted(affects), program: sorted(program), amends: amends.reverse() };
     },
 
     // ---------- Texte für Teilen/Export ----------
@@ -344,25 +362,55 @@
       if (e.goodForSomeone.trim()) out.push(`Gutes getan: ${e.goodForSomeone.trim()}`);
       if (e.learned.trim()) out.push(`Heute gelernt: ${e.learned.trim()}`);
       const g = e.threeGood.map((x) => x.trim()).filter(Boolean);
-      if (g.length) out.push(`Drei tolle Dinge: ${g.join(" / ")}`);
+      if (g.length) out.push(`Tolle Dinge: ${g.join(" / ")}`);
       if (e.programDone.length) out.push(`Programm heute: ${e.programDone.join(", ")}`);
+      (day.inventories || []).forEach((t) => { out.push(`— 10. Schritt${t.time ? " um " + t.time : ""} (Schnell-Inventur) —`); out.push(...this.step10Lines(t)); });
       if (e.step10 === true && e.s10) {
-        const d = e.s10;
         out.push("— 10. Schritt —");
-        if (d.what.trim()) out.push(`Was war los: ${d.what.trim()}`);
-        const f = d.feelings.concat(d.feelingsOther.trim() ? [d.feelingsOther.trim()] : []);
-        if (f.length) out.push(`Gefühle: ${f.join(", ")}`);
-        const c = d.defects.concat(d.defectsOther.trim() ? [d.defectsOther.trim()] : []);
-        if (c.length) out.push(`Charakterfehler: ${c.join(", ")}`);
-        if (d.learn.trim()) out.push(`Gelernt / anders machen: ${d.learn.trim()}`);
-        if (d.hinder.trim()) out.push(`Was hat mich gehindert: ${d.hinder.trim()}`);
-        if (d.talked !== null) out.push(`Darüber gesprochen: ${d.talked ? "Ja" + (d.talkedWho ? " – " + d.talkedWho : "") : "Nein" + (d.talkedWhy ? " – " + d.talkedWhy : "")}`);
-        if (d.amend !== null) out.push(`Wiedergutmachung/Klärung: ${d.amend ? "Ja" + (d.amendWhat ? " – " + d.amendWhat : "") + (d.amendDone ? " (erledigt)" : "") : "Nein"}`);
-        if (d.newcomerCalled !== null) out.push(`Newcomer/AA-Freund angerufen: ${d.newcomerCalled ? "Ja" + (d.newcomerName ? " – " + d.newcomerName : "") : "Nein"}`);
+        out.push(...this.step10Lines(e.s10));
       } else if (e.step10 === false && e.specialThanks.trim()) {
         out.push(`Besonders dankbar: ${e.specialThanks.trim()}`);
       }
       return out.length > 1 ? out.join("\n") : "";
+    },
+    opposites(t) {
+      const map = Object.fromEntries(this.state.content.defects.map((x) => [x.text, x.opposite]));
+      const list = t.defects.map((d) => map[d]).filter(Boolean);
+      if (t.assetsOther && t.assetsOther.trim()) list.push(t.assetsOther.trim());
+      return [...new Set(list)];
+    },
+    step10Lines(d) {
+      const out = [];
+      if (d.who && d.who.trim()) out.push(`Wer/Was: ${d.who.trim()}`);
+      if (d.what.trim()) out.push(`Was war los: ${d.what.trim()}`);
+      if ((d.affects || []).length) out.push(`Das beeinflusst bei mir: ${d.affects.join(", ")}`);
+      const f = d.feelings.concat(d.feelingsOther.trim() ? [d.feelingsOther.trim()] : []);
+      if (f.length) out.push(`Gefühle: ${f.join(", ")}`);
+      const c = d.defects.concat(d.defectsOther.trim() ? [d.defectsOther.trim()] : []);
+      if (c.length) out.push(`Mein Anteil (Charakterfehler): ${c.join(", ")}`);
+      const o = this.opposites(d);
+      if (o.length) out.push(`Stattdessen üben: ${o.join(", ")}`);
+      if (d.prayed) out.push("• 7.-Schritt-Gebet gesprochen");
+      if (d.learn.trim()) out.push(`Gelernt / anders machen: ${d.learn.trim()}`);
+      if (d.hinder.trim()) out.push(`Was hat mich gehindert: ${d.hinder.trim()}`);
+      if (d.amend !== null) out.push(`Wiedergutmachung/Klärung: ${d.amend ? "Ja" + (d.amendWhat ? " – " + d.amendWhat : "") + (d.amendDone ? " (erledigt)" : "") : "Nein"}`);
+      if (d.help && d.help.trim()) out.push(`Wem ich jetzt helfen kann: ${d.help.trim()}`);
+      if (d.newcomerCalled !== null) out.push(`Newcomer/AA-Freund angerufen: ${d.newcomerCalled ? "Ja" + (d.newcomerName ? " – " + d.newcomerName : "") : "Nein"}`);
+      if (d.talked !== null) out.push(`Mit jemandem geteilt: ${d.talked ? "Ja" + (d.talkedWho ? " – " + d.talkedWho : "") : "Nein" + (d.talkedWhy ? " – " + d.talkedWhy : "")}`);
+      return out;
+    },
+    // Persönlicher Teil des 7.-Schritt-Gebets (eigene Worte, keine Buchzitate)
+    personalPrayer(t) {
+      const c = t.defects.concat(t.defectsOther && t.defectsOther.trim() ? [t.defectsOther.trim()] : []);
+      if (!c.length) return "";
+      const o = this.opposites(t);
+      const join = (a) => a.length > 1 ? a.slice(0, -1).join(", ") + " und " + a[a.length - 1] : a[0];
+      const lines = [`Gott, ich bin bereit, Dir meinen Anteil zu überlassen: ${join(c)}.`];
+      lines.push("Bitte nimm davon weg, was mich von Dir und von meinen Mitmenschen trennt.");
+      if (o.length) lines.push(`Schenke mir stattdessen ${join(o)}.`);
+      if (t.who && t.who.trim()) lines.push(`Hilf mir, ${t.who.trim()} so zu begegnen, wie Du es willst.`);
+      lines.push("Dein Wille geschehe, nicht meiner.");
+      return lines.join("\n");
     },
     formatDay(date, day, which) {
       const parts = [`AA-Reflex · ${D.pretty(date)}`];
