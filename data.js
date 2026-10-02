@@ -52,6 +52,24 @@ window.AA_DEFAULTS = {
   // „Das beeinflusst bei mir …“ (vgl. 4. Schritt)
   affects: ["Stolz (wie andere mich sehen)", "Selbstwertgefühl (wie ich mich sehe)", "Finanzen/Besitz", "Persönliche Beziehungen",
     "Ziele/Pläne/Hoffnungen", "Emotionale Sicherheit", "Sexualität/Intimität"],
+  // 11. Schritt – eigene Formulierungen nach dem Aufbau im Blauen Buch (Morgen, tagsüber, Abend)
+  s11Morning: [
+    "Den kommenden Tag in Ruhe durchdenken",
+    "Darum bitten, dass mein Denken gelenkt wird – frei von Selbstmitleid, Unehrlichkeit und Eigennutz",
+    "Wo ich unentschlossen bin: um eine Eingebung bitten – und es dann gelassen angehen",
+    "Darum bitten, im Lauf des Tages den nächsten richtigen Schritt gezeigt zu bekommen",
+    "Um das bitten, was ich brauche, um mit dem Heute gut umzugehen",
+    "Nicht nur für mich bitten – frei werden vom Eigenwillen",
+    "Mir vornehmen, tagsüber innezuhalten, wenn ich unruhig oder unsicher werde"
+  ],
+  s11Flags: ["nachtragend", "selbstsüchtig", "unehrlich", "ängstlich"],
+  s11Evening: [
+    "Schulde ich jemandem eine Entschuldigung?",
+    "Habe ich etwas für mich behalten, das ich mit jemandem besprechen sollte?",
+    "War ich zu allen freundlich und liebevoll?",
+    "Was hätte ich besser machen können?",
+    "Habe ich die meiste Zeit an mich gedacht – oder daran, was ich für andere tun kann?"
+  ],
   program: ["Basics", "Dienste", "Meetings", "Programmarbeit", "Arbeitsmeeting", "Sponsees", "Dankbarkeitsliste", "Sprechermeeting"],
   affirmations: {
     "Selbstfürsorge & Gelassenheit": [

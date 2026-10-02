@@ -49,6 +49,9 @@
       feelings: simple(src.feelings),
       defects: src.defects.map(([text, opposite]) => ({ id: uid(), text, opposite })),
       affects: simple(src.affects),
+      s11Morning: simple(src.s11Morning),
+      s11Flags: simple(src.s11Flags),
+      s11Evening: simple(src.s11Evening),
       program: simple(src.program),
       prayers: [], // { id, title, text, fav, source }
       affirmations: grouped(src.affirmations),
@@ -63,7 +66,10 @@
     affects: { title: "10. Schritt – Das beeinflusst bei mir", grouped: false },
     feelings: { title: "10. Schritt – Gefühle", grouped: false },
     defects: { title: "10. Schritt – Charakterfehler & Gegenteil", grouped: false, pairs: true },
-    program: { title: "Programm-Check", grouped: false }
+    program: { title: "Programm-Check", grouped: false },
+    s11Morning: { title: "11. Schritt – Morgens", grouped: false },
+    s11Flags: { title: "11. Schritt – Heute war ich …", grouped: false },
+    s11Evening: { title: "11. Schritt – Rückschau am Abend", grouped: false }
   };
 
   // ---------- Zustand ----------
@@ -84,8 +90,10 @@
 
   function newDay() {
     return {
-      morning: { thankful: [""], selfcare: [""], selfcareChips: [], focus: [], focusNote: "", affirmation: null, quote: null, done: false, doneAt: null },
-      evening: { goodForSomeone: "", learned: "", threeGood: ["", "", ""], programDone: [], step10: null, specialThanks: "", s10: null, done: false, doneAt: null },
+      morning: { thankful: [""], selfcare: [""], selfcareChips: [], focus: [], focusNote: "", affirmation: null, quote: null, done: false, doneAt: null,
+        s11: { done: [], unsure: "", prayed: false } },
+      evening: { goodForSomeone: "", learned: "", threeGood: ["", "", ""], programDone: [], step10: null, specialThanks: "", s10: null, done: false, doneAt: null,
+        s11: { flags: [], done: [], note: "", prayed: false } },
       inventories: [], // Schnell-Inventuren (10. Schritt tagsüber), gleicher Aufbau wie s10 plus id/time/done
       updatedAt: null
     };
@@ -119,6 +127,8 @@
       const t = newDay(), d = out.days[k];
       d.morning = Object.assign(t.morning, d.morning || {});
       d.evening = Object.assign(t.evening, d.evening || {});
+      d.morning.s11 = Object.assign(newDay().morning.s11, d.morning.s11 || {});
+      d.evening.s11 = Object.assign(newDay().evening.s11, d.evening.s11 || {});
       if (d.evening.s10) d.evening.s10 = Object.assign(newStep10(), d.evening.s10);
       d.inventories = (d.inventories || []).map((x) => Object.assign(newStep10(), x));
     }
@@ -239,7 +249,8 @@
       const m = day.morning, e = day.evening;
       const any = (a) => (a || []).some((x) => String(x).trim());
       return !(any(m.thankful) || any(m.selfcare) || m.selfcareChips.length || m.focus.length || m.focusNote.trim() || m.affirmation ||
-        e.goodForSomeone.trim() || e.learned.trim() || any(e.threeGood) || e.programDone.length || e.step10 !== null || m.done || e.done || (day.inventories || []).length);
+        e.goodForSomeone.trim() || e.learned.trim() || any(e.threeGood) || e.programDone.length || e.step10 !== null || m.done || e.done || (day.inventories || []).length ||
+        (m.s11 && (m.s11.done.length || m.s11.unsure.trim() || m.s11.prayed)) || (e.s11 && (e.s11.flags.length || e.s11.done.length || e.s11.note.trim() || e.s11.prayed)));
     },
     deleteDay(date) { delete this.state.days[date]; this.scheduleSave(); },
 
@@ -363,7 +374,8 @@
         F.sec("Heute sorge ich gut für mich", F.list(self)),
         F.sec("Nur für heute", [F.list(focus), m.focusNote.trim() ? `↳ ${m.focusNote.trim()}` : ""].filter(Boolean).join("\n")),
         m.affirmation ? F.sec("Mein Kraftsatz", F.quote(m.affirmation.text)) : "",
-        m.quote ? F.sec("Spruch des Tages", F.quote(m.quote.text)) : ""
+        m.quote ? F.sec("Spruch des Tages", F.quote(m.quote.text)) : "",
+        this.fmtS11Morning(m.s11)
       ]);
       return body ? `🌅 *Morgen${date ? " · " + D.pretty(date) : ""}*\n\n${body}` : "";
     },
@@ -374,6 +386,7 @@
         e.learned.trim() ? F.sec("Heute durfte ich lernen", e.learned.trim()) : "",
         F.sec("Tolle Dinge heute", F.list(F.clean(e.threeGood))),
         e.programDone.length ? F.sec("Mein Programm heute", e.programDone.join(" · ")) : "",
+        this.fmtS11Evening(e.s11),
         e.step10 === false && e.specialThanks.trim() ? F.sec("Besonders dankbar bin ich für", e.specialThanks.trim()) : ""
       ];
       const line = "┈┈┈┈┈┈┈┈┈┈┈┈\n";
@@ -381,6 +394,21 @@
       if (e.step10 === true && e.s10) { const x = this.formatStep10(e.s10, "🔎 10. Schritt"); if (x) parts.push(line + x); }
       const body = F.blocks(parts);
       return body ? `🌙 *Abend${date ? " · " + D.pretty(date) : ""}*\n\n${body}` : "";
+    },
+    fmtS11Morning(x) {
+      if (!x || !(x.done.length || x.unsure.trim() || x.prayed)) return "";
+      const n = this.state.content.s11Morning.filter((i) => i.text.trim()).length;
+      const lines = [`🕯️ *11. Schritt:* ${x.done.length} von ${n}${x.prayed ? " · 🙏 Gebet gesprochen" : ""}`];
+      if (x.unsure.trim()) lines.push(`*Unentschlossen bin ich bei:* ${x.unsure.trim()}`);
+      return lines.join("\n");
+    },
+    fmtS11Evening(x) {
+      if (!x || !(x.flags.length || x.done.length || x.note.trim() || x.prayed)) return "";
+      const n = this.state.content.s11Evening.filter((i) => i.text.trim()).length;
+      const lines = [`🕯️ *Rückschau (11. Schritt):* ${x.done.length} von ${n}${x.prayed ? " · 🙏 Gebet gesprochen" : ""}`];
+      if (x.flags.length) lines.push(`*Heute war ich:* ${x.flags.join(" · ")}`);
+      if (x.note.trim()) lines.push(x.note.trim());
+      return lines.join("\n");
     },
     opposites(t) {
       const map = Object.fromEntries(this.state.content.defects.map((x) => [x.text, x.opposite]));

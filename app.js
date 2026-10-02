@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const { Store, D, LISTS, uid, newStep10, contentFromDefaults } = window.AA;
-  const APP_VERSION = "2.3.1";
+  const APP_VERSION = "2.4.0";
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -234,6 +234,74 @@
   }
   function bindBanner() { const b = $("#banner-backup"); if (b) b.onclick = createBackup; }
 
+  // ---------- 11. Schritt (Morgen & Abend, freiwillig) ----------
+  function myStepPrayer(n) {
+    const re = new RegExp("(^|\\D)" + n + "\\.?\\s*schritt", "i");
+    return S().content.prayers.find((p) => re.test(p.title) && p.text.trim()) || null;
+  }
+  function s11PrayerBlock(path, prayed) {
+    const pr = myStepPrayer(11);
+    return `<div class="praybox">
+      ${pr ? `<details><summary>🙏 ${esc(pr.title)} <span class="muted">(aus deinen Gebeten)</span></summary><div class="prayer-text">${esc(pr.text)}</div></details>`
+        : `<p class="hint">Tipp: Ein Gebet mit „11. Schritt“ im Titel aus deiner Gebetesammlung erscheint hier zum Aufklappen.</p>`}
+      <label class="check"><input type="checkbox" data-bind="${path}" ${prayed ? "checked" : ""}> Gebet gesprochen</label></div>`;
+  }
+  const s11Stat = (x, list) => `${x.done.length}/${texts(list).length}${x.prayed ? " · 🙏" : ""}`;
+  function s11MorningCard(m) {
+    return `<details class="card s11" data-s11="m" ${view.dataset.s11open === "m" ? "open" : ""}>
+      <summary><span>🕯️ 11. Schritt – beim Erwachen</span><span class="s11-stat">${s11Stat(m.s11, "s11Morning")}</span></summary>
+      <p class="hint">Freiwillig – zählt nicht für „abschließen“. Antippen, was ich heute Morgen getan habe.</p>
+      ${chips("morning.s11.done", texts("s11Morning"), m.s11.done, "stack")}
+      <label class="lbl">Wo bin ich heute unentschlossen?</label>
+      <input type="text" data-bind="morning.s11.unsure" value="${esc(m.s11.unsure)}" placeholder="Entscheidung, Gespräch, Situation …">
+      ${s11PrayerBlock("morning.s11.prayed", m.s11.prayed)}
+    </details>`;
+  }
+  function s11EveningCard(e) {
+    const x = e.s11;
+    return `<details class="card s11" data-s11="e" ${view.dataset.s11open === "e" ? "open" : ""}>
+      <summary><span>🕯️ 11. Schritt – Rückschau</span><span class="s11-stat">${s11Stat(x, "s11Evening")}</span></summary>
+      <p class="hint">Freiwillig – zählt nicht für „abschließen“.</p>
+      <label class="lbl">Heute war ich …</label>
+      ${chips("evening.s11.flags", texts("s11Flags"), x.flags)}
+      <div class="s11-hint" ${x.flags.length ? "" : "hidden"}>
+        <span>Vielleicht doch ein 10. Schritt?</span>
+        <button type="button" class="btn sm" id="s11-to10">10. Schritt öffnen</button>
+      </div>
+      <label class="lbl">Rückschau</label>
+      ${chips("evening.s11.done", texts("s11Evening"), x.done, "stack")}
+      <label class="lbl">Notiz</label>
+      <textarea data-bind="evening.s11.note" rows="2">${esc(x.note)}</textarea>
+      <p class="hint">Danach nicht ins Grübeln verfallen: Was schiefging, hinlegen, um Vergebung bitten und fragen, was ich morgen anders machen kann.</p>
+      ${s11PrayerBlock("evening.s11.prayed", x.prayed)}
+    </details>`;
+  }
+  function wireS11(date, day) {
+    $$("details.s11").forEach((d) => {
+      const kind = d.dataset.s11;
+      d.addEventListener("toggle", () => { if (d.open) view.dataset.s11open = kind; else if (view.dataset.s11open === kind) delete view.dataset.s11open; });
+      const upd = () => setTimeout(() => {
+        const x = kind === "m" ? day.morning.s11 : day.evening.s11;
+        $(".s11-stat", d).textContent = s11Stat(x, kind === "m" ? "s11Morning" : "s11Evening");
+        const h = $(".s11-hint", d); if (h) h.hidden = !x.flags.length;
+      }, 0);
+      d.addEventListener("click", upd); d.addEventListener("input", upd); d.addEventListener("change", upd);
+    });
+    const to10 = $("#s11-to10");
+    if (to10) to10.onclick = () => {
+      const e = day.evening;
+      e.step10 = true;
+      if (!e.s10) e.s10 = newStep10();
+      // Passende Charakterfehler vorschlagen
+      const map = { nachtragend: "Groll/Ressentiment", selbstsüchtig: "Selbstsucht/Egoismus", unehrlich: "Unehrlichkeit/Selbsttäuschung", ängstlich: "Selbstbezogene Angst" };
+      const known = texts("defects");
+      e.s11.flags.forEach((f) => { const d = map[f.toLowerCase()]; if (d && known.includes(d) && !e.s10.defects.includes(d)) e.s10.defects.push(d); });
+      Store.commitDay(date, day);
+      rerender();
+      const sec = $("#sec-s10"); if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  }
+
   // ---------- Morgen ----------
   function renderMorning(argDate) {
     const today = Store.today();
@@ -256,6 +324,7 @@
       ${date === today ? backupBanner() : ""}
       ${dateBar("morgen", date)}
       <h1 class="screen-title">🌅 Morgenroutine ${m.done ? `<span class="badge ok">✓ abgeschlossen</span>` : ""}</h1>
+      ${s11MorningCard(m)}
 
       <section class="card" id="sec-thanks">
         <h2>Ich bin dankbar für …</h2>
@@ -317,6 +386,7 @@
       </section>`;
 
     bindDay(view, date, day);
+    wireS11(date, day);
     bindBanner();
     const commit = () => Store.commitDay(date, day);
 
@@ -533,6 +603,8 @@
         ${chips("evening.programDone", texts("program"), e.programDone)}
       </section>
 
+      ${s11EveningCard(e)}
+
       <section class="card" id="sec-s10">
         <h2>Ist heute ein 10. Schritt notwendig?</h2>
         ${seg("evening.step10", e.step10)}
@@ -555,6 +627,7 @@
       </section>`;
 
     bindDay(view, date, day);
+    wireS11(date, day);
     liveStep10(day);
     const commit = () => Store.commitDay(date, day);
     $("#e-done").onclick = () => {

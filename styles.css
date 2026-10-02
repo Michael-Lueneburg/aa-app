@@ -245,3 +245,13 @@ body.reading main { max-width: none; padding: 0 0 24px; }
 .morechips summary { cursor: pointer; color: var(--head); font-size: 14px; margin: 2px 0 6px; min-height: 32px; display: flex; align-items: center; }
 .contact .btn { flex: 1; white-space: nowrap; padding: 10px 6px; font-size: 15px; }
 .about { margin-top: 18px; }
+
+/* 11. Schritt */
+details.s11 > summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; list-style: none; font-weight: 600; color: var(--head); font-size: 17px; min-height: 28px; }
+details.s11 > summary::-webkit-details-marker { display: none; }
+details.s11 > summary::after { content: "▾"; color: var(--muted); margin-left: 4px; }
+details.s11[open] > summary::after { content: "▴"; }
+details.s11 > summary > span:first-child { flex: 1; }
+.s11-stat { font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.s11-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 10px; font-size: 14px; }
+.s11-hint[hidden] { display: none; }
