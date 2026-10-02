@@ -160,3 +160,11 @@ window.AA_DEFAULTS = {
     ]
   }
 };
+
+// Kontakt zum Entwickler (wird unter „Mehr → Über die App" angezeigt)
+window.AA_CONTACT = {
+  name: "Michael aus Lüneburg",
+  phone: "+491724174636",       // für Anruf, SMS, WhatsApp
+  phoneDisplay: "0172 4174636",
+  whatsappText: "Hallo Michael, ich nutze AA-Reflex und "
+};

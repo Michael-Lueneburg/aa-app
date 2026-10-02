@@ -150,7 +150,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .pill.ok { color: var(--ok); border-color: var(--ok); }
 .pill.s10 { color: var(--head); border-color: var(--head); }
 .empty { color: var(--muted); font-style: italic; padding: 8px 2px; }
-.daytext { white-space: pre-wrap; font: inherit; margin: 0 0 10px; }
+.daytext { white-space: pre-wrap; font: inherit; margin: 0 0 10px; line-height: 1.55; }
+.daytext strong { color: var(--head); }
 
 /* Rückblick */
 .sober .hero { display: flex; align-items: baseline; gap: 8px; }
@@ -242,3 +243,5 @@ body.reading main { max-width: none; padding: 0 0 24px; }
 .pairin { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
 .pairin input { min-width: 0; }
 .morechips summary { cursor: pointer; color: var(--head); font-size: 14px; margin: 2px 0 6px; min-height: 32px; display: flex; align-items: center; }
+.contact .btn { flex: 1; white-space: nowrap; padding: 10px 6px; font-size: 15px; }
+.about { margin-top: 18px; }

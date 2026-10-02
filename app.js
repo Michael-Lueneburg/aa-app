@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const { Store, D, LISTS, uid, newStep10, contentFromDefaults } = window.AA;
-  const APP_VERSION = "2.2.0";
+  const APP_VERSION = "2.3.1";
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -258,27 +258,27 @@
       <h1 class="screen-title">🌅 Morgenroutine ${m.done ? `<span class="badge ok">✓ abgeschlossen</span>` : ""}</h1>
 
       <section class="card" id="sec-thanks">
-        <h2>Dankbarkeit</h2>
-        <p class="hint">Mindestens ein Eintrag, bis zu sechs.</p>
-        ${textRows("morning.thankful", m.thankful, "Dankbar für", 6)}
+        <h2>Ich bin dankbar für …</h2>
+        <p class="hint">Mindestens ein Punkt, bis zu sechs.</p>
+        ${textRows("morning.thankful", m.thankful, "Punkt", 6)}
       </section>
 
       <section class="card" id="sec-self">
-        <h2>Heute gut für mich sorgen</h2>
+        <h2>Heute sorge ich gut für mich …</h2>
         <p class="hint">Antippen oder eigene Einträge schreiben.</p>
         ${chips("morning.selfcareChips", texts("selfcareChips"), m.selfcareChips)}
         ${textRows("morning.selfcare", m.selfcare, "Eigenes", 6)}
       </section>
 
       <section class="card">
-        <h2>Tagesfokus – Nur für heute</h2>
+        <h2>Nur für heute …</h2>
         ${chips("morning.focus", texts("ninePoints"), m.focus, "stack")}
         <label class="lbl" for="focusNote">Mini-Absicht</label>
         <input type="text" id="focusNote" data-bind="morning.focusNote" value="${esc(m.focusNote)}" placeholder="Heute konkret tue ich …">
       </section>
 
       <section class="card">
-        <h2>Kraftsatz</h2>
+        <h2>Mein Kraftsatz</h2>
         ${m.affirmation ? `<blockquote class="picked">„${esc(m.affirmation.text)}“</blockquote>` : `<p class="hint">Wähle einen Satz für heute.</p>`}
         <details class="affpick" ${m.affirmation && !view.dataset.affOpen ? "" : "open"}>
         <summary>${m.affirmation ? "Anderen Kraftsatz wählen" : "Kraftsätze anzeigen"}</summary>
@@ -471,8 +471,7 @@
       </section>`;
     bindDay(view, date, day);
     liveStep10(day);
-    const text = () => [`10. Schritt · ${D.pretty(date)}${t.time ? " " + t.time : ""}`, ...Store.step10Lines(t),
-      Store.personalPrayer(t) && t.prayed ? "\n" + Store.personalPrayer(t) : ""].filter(Boolean).join("\n");
+    const text = () => Store.formatStep10(t, `⚡ 10. Schritt · ${D.pretty(date)}${t.time ? " · " + t.time : ""}`, true);
     const isEmpty = () => !(t.who.trim() || t.what.trim() || t.defects.length || t.feelings.length || t.affects.length || t.defectsOther.trim());
     setCleanup(() => {
       if (location.hash.includes(t.id)) return; // nur neu aufgebaut, nicht verlassen
@@ -512,15 +511,15 @@
       <h1 class="screen-title">🌙 Abendroutine ${e.done ? `<span class="badge ok">✓ abgeschlossen</span>` : ""}</h1>
 
       <section class="card">
-        <h2>Was habe ich heute Gutes für jemanden getan?</h2>
+        <h2>Gutes für jemanden getan</h2>
         <textarea data-bind="evening.goodForSomeone" rows="2">${esc(e.goodForSomeone)}</textarea>
       </section>
       <section class="card">
-        <h2>Was habe ich heute lernen dürfen?</h2>
+        <h2>Heute durfte ich lernen …</h2>
         <textarea data-bind="evening.learned" rows="2">${esc(e.learned)}</textarea>
       </section>
       <section class="card" id="sec-good">
-        <h2>Tolle Dinge</h2>
+        <h2>Tolle Dinge heute</h2>
         <p class="hint">Mindestens drei – gern mehr.</p>
         ${e.threeGood.map((v, i) => i < 3
           ? `<input type="text" data-bind="evening.threeGood.${i}" value="${esc(v)}" placeholder="${i + 1}." aria-label="Tolles Ding ${i + 1}">`
@@ -529,7 +528,7 @@
         <button type="button" class="btn ghost sm" data-add="evening.threeGood" data-max="30">+ weiteres tolles Ding</button>
       </section>
       <section class="card">
-        <h2>Programm heute</h2>
+        <h2>Mein Programm heute</h2>
         <p class="hint">Abhaken, was ich heute getan habe.</p>
         ${chips("evening.programDone", texts("program"), e.programDone)}
       </section>
@@ -613,9 +612,9 @@
       const from = $("#ex-from").value, to = $("#ex-to").value;
       const ks = Object.keys(st.days).filter((k) => k >= from && k <= to && !Store.isDayEmpty(st.days[k])).sort();
       if (!ks.length) { toast("Keine Einträge in diesem Zeitraum."); return null; }
-      return { text: ks.map((k) => Store.formatDay(k, st.days[k])).join("\n\n────────\n\n"), from, to };
+      return { text: ks.map((k) => Store.formatDay(k, st.days[k])).join("\n\n━━━━━━━━━━━━\n\n"), from, to };
     };
-    $("#ex-file").onclick = () => { const r = rangeText(); if (r) downloadFile(`AA-Reflex_${r.from}_bis_${r.to}.txt`, r.text, "text/plain;charset=utf-8"); };
+    $("#ex-file").onclick = () => { const r = rangeText(); if (r) downloadFile(`AA-Reflex_${r.from}_bis_${r.to}.txt`, Store.plain(r.text), "text/plain;charset=utf-8"); };
     $("#ex-share").onclick = () => { const r = rangeText(); if (r) shareText(r.text); };
   }
 
@@ -623,12 +622,13 @@
     const day = D.valid(date) && Store.getDay(date);
     if (!day) { location.hash = "#/verlauf"; return; }
     const mt = Store.formatMorning(day), et = Store.formatEvening(day);
+    const rich = (t) => esc(t).replace(/\*([^*\n]+)\*/g, "<strong>$1</strong>").replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/gm, "$1<em>$2</em>");
     view.innerHTML = `
       <div class="datebar"><a class="iconbtn" href="#/verlauf" aria-label="Zurück">‹</a>
         <div class="dateinfo"><strong>${D.pretty(date)}</strong><span>${day.morning.done ? "Morgen ✓" : "Morgen offen"} · ${day.evening.done ? "Abend ✓" : "Abend offen"}</span></div><span></span></div>
-      <section class="card"><pre class="daytext">${esc(mt.split("\n").length > 1 ? mt : "🌅 Morgen – keine Einträge")}</pre>
+      <section class="card"><div class="daytext">${mt ? rich(mt) : "🌅 Morgen – keine Einträge"}</div>
         <a class="btn sm" href="#/morgen/${date}">Morgen bearbeiten</a></section>
-      <section class="card"><pre class="daytext">${esc(et || "🌙 Abend – keine Einträge")}</pre>
+      <section class="card"><div class="daytext">${et ? rich(et) : "🌙 Abend – keine Einträge"}</div>
         <div class="btnrow"><a class="btn sm" href="#/abend/${date}">Abend bearbeiten</a>
         ${(day.inventories || []).map((x) => `<a class="btn sm" href="#/inventur/${date}/${x.id}">⚡ ${esc(x.time || "")} bearbeiten</a>`).join("")}</div></section>
       <section class="card actions">
@@ -639,7 +639,7 @@
         </div>
       </section>`;
     $("#d-share").onclick = () => shareText(Store.formatDay(date, day));
-    $("#d-file").onclick = () => downloadFile(`AA-Reflex_${date}.txt`, Store.formatDay(date, day), "text/plain;charset=utf-8");
+    $("#d-file").onclick = () => downloadFile(`AA-Reflex_${date}.txt`, Store.plain(Store.formatDay(date, day)), "text/plain;charset=utf-8");
     $("#d-del").onclick = async () => {
       if (await dialog({ title: "Tag löschen?", text: `Alle Einträge vom ${D.pretty(date)} werden entfernt.`, okLabel: "Löschen", danger: true })) {
         Store.deleteDay(date); await Store.saveNow(); toast("Tag gelöscht."); location.hash = "#/verlauf";
@@ -769,6 +769,23 @@
     rerender();
   }
 
+  function aboutCard() {
+    const c = window.AA_CONTACT;
+    if (!c || !c.phone) return "";
+    const num = c.phone.replace(/[^\d+]/g, "");
+    return `<section class="card about">
+        <h2>Über die App</h2>
+        <p>AA-Reflex ist ein privates Projekt von <strong>${esc(c.name)}</strong>. Fragen, Ideen, Fehler – oder einfach ins Gespräch kommen:</p>
+        <p class="center"><strong>${esc(c.phoneDisplay || c.phone)}</strong></p>
+        <div class="btnrow contact">
+          <a class="btn" href="tel:${num}">📞 Anrufen</a>
+          <a class="btn" href="https://wa.me/${num.replace("+", "")}?text=${encodeURIComponent(c.whatsappText || "")}" target="_blank" rel="noopener">💬 WhatsApp</a>
+          <a class="btn" href="sms:${num}">✉️ SMS</a>
+        </div>
+        <p class="hint">Deine Einträge bleiben auf deinem Handy – niemand sonst sieht sie, auch ich nicht.</p>
+      </section>`;
+  }
+
   async function renderMore() {
     const st = S();
     const last = st.meta.lastBackupAt;
@@ -825,7 +842,8 @@
         <p class="hint">Alle Einträge liegen nur auf diesem Gerät. Nichts wird an einen Server geschickt.</p>
         <button type="button" class="btn danger-ghost" id="wipe">Alle Daten löschen</button>
       </section>
-      <div class="center"><p class="hint">AA-Reflex ${APP_VERSION}</p><button type="button" class="btn sm" id="upd-check">Nach Updates suchen</button></div>`;
+      <div class="center"><p class="hint">AA-Reflex ${APP_VERSION}</p><button type="button" class="btn sm" id="upd-check">Nach Updates suchen</button></div>
+      ${aboutCard()}`;
 
     const s = st.settings;
     $("#set-sober").onchange = (e) => { s.soberDate = D.valid(e.target.value) ? e.target.value : null; Store.saveNow(); };

@@ -1,6 +1,6 @@
 // AA-Reflex Service Worker – macht die App offline nutzbar.
 // Bei jeder neuen Version VERSION erhöhen, dann bietet die App das Update an.
-const VERSION = "aa-reflex-2.2.0";
+const VERSION = "aa-reflex-2.3.1";
 const FILES = [
   "./", "index.html", "styles.css", "data.js", "store.js", "lesen.js", "app.js", "manifest.webmanifest",
   "vendor/pdfjs/pdf.min.mjs", "vendor/pdfjs/pdf.worker.min.mjs",

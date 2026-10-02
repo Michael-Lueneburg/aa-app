@@ -342,36 +342,45 @@
     },
 
     // ---------- Texte für Teilen/Export ----------
-    formatMorning(day) {
-      const m = day.morning;
-      const clean = (a) => (a || []).map((x) => String(x).trim()).filter(Boolean);
-      const self = clean(m.selfcare).concat(m.selfcareChips);
-      return [
-        "🌅 Morgen",
-        clean(m.thankful).length ? `Dankbar: ${clean(m.thankful).join(" / ")}` : "",
-        self.length ? `Für einen guten Tag: ${self.join(" / ")}` : "",
-        m.focus.length ? `Tagesfokus: ${m.focus.join(" | ")}` : "",
-        m.focusNote.trim() ? `Mini-Absicht: ${m.focusNote.trim()}` : "",
-        m.affirmation ? `Kraftsatz: „${m.affirmation.text}“` : "",
-        m.quote ? `Spruch des Tages: „${m.quote.text}“` : ""
-      ].filter(Boolean).join("\n");
+    // Formatierung für WhatsApp & Co.: *fett*, _kursiv_, „•“-Listen, Leerzeilen zwischen Abschnitten.
+    // Für Textdateien entfernt plain() die Markierungen wieder.
+    _fmt: {
+      clean: (a) => (a || []).map((x) => String(x).trim()).filter(Boolean),
+      list: (a) => a.map((x) => "• " + x).join("\n"),
+      sec: (title, body) => (body ? `*${title}*\n${body}` : ""),
+      quote: (t) => `_„${t}“_`,
+      blocks: (arr) => arr.filter(Boolean).join("\n\n")
     },
-    formatEvening(day) {
-      const e = day.evening;
-      const out = ["🌙 Abend"];
-      if (e.goodForSomeone.trim()) out.push(`Gutes getan: ${e.goodForSomeone.trim()}`);
-      if (e.learned.trim()) out.push(`Heute gelernt: ${e.learned.trim()}`);
-      const g = e.threeGood.map((x) => x.trim()).filter(Boolean);
-      if (g.length) out.push(`Tolle Dinge: ${g.join(" / ")}`);
-      if (e.programDone.length) out.push(`Programm heute: ${e.programDone.join(", ")}`);
-      (day.inventories || []).forEach((t) => { out.push(`— 10. Schritt${t.time ? " um " + t.time : ""} (Schnell-Inventur) —`); out.push(...this.step10Lines(t)); });
-      if (e.step10 === true && e.s10) {
-        out.push("— 10. Schritt —");
-        out.push(...this.step10Lines(e.s10));
-      } else if (e.step10 === false && e.specialThanks.trim()) {
-        out.push(`Besonders dankbar: ${e.specialThanks.trim()}`);
-      }
-      return out.length > 1 ? out.join("\n") : "";
+    plain(text) {
+      return text.replace(/\*([^*\n]+)\*/g, "$1").replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/gm, "$1$2");
+    },
+    formatMorning(day, date) {
+      const F = this._fmt, m = day.morning;
+      const self = F.clean(m.selfcare).concat(m.selfcareChips);
+      const focus = F.clean(m.focus).map((x) => x.replace(/^Nur für heute,?\s*/i, "… "));
+      const body = F.blocks([
+        F.sec("Ich bin dankbar für", F.list(F.clean(m.thankful))),
+        F.sec("Heute sorge ich gut für mich", F.list(self)),
+        F.sec("Nur für heute", [F.list(focus), m.focusNote.trim() ? `↳ ${m.focusNote.trim()}` : ""].filter(Boolean).join("\n")),
+        m.affirmation ? F.sec("Mein Kraftsatz", F.quote(m.affirmation.text)) : "",
+        m.quote ? F.sec("Spruch des Tages", F.quote(m.quote.text)) : ""
+      ]);
+      return body ? `🌅 *Morgen${date ? " · " + D.pretty(date) : ""}*\n\n${body}` : "";
+    },
+    formatEvening(day, date) {
+      const F = this._fmt, e = day.evening;
+      const parts = [
+        e.goodForSomeone.trim() ? F.sec("Gutes für jemanden getan", e.goodForSomeone.trim()) : "",
+        e.learned.trim() ? F.sec("Heute durfte ich lernen", e.learned.trim()) : "",
+        F.sec("Tolle Dinge heute", F.list(F.clean(e.threeGood))),
+        e.programDone.length ? F.sec("Mein Programm heute", e.programDone.join(" · ")) : "",
+        e.step10 === false && e.specialThanks.trim() ? F.sec("Besonders dankbar bin ich für", e.specialThanks.trim()) : ""
+      ];
+      const line = "┈┈┈┈┈┈┈┈┈┈┈┈\n";
+      (day.inventories || []).forEach((t) => { const x = this.formatStep10(t, `⚡ 10. Schritt${t.time ? " · " + t.time : ""}`); if (x) parts.push(line + x); });
+      if (e.step10 === true && e.s10) { const x = this.formatStep10(e.s10, "🔎 10. Schritt"); if (x) parts.push(line + x); }
+      const body = F.blocks(parts);
+      return body ? `🌙 *Abend${date ? " · " + D.pretty(date) : ""}*\n\n${body}` : "";
     },
     opposites(t) {
       const map = Object.fromEntries(this.state.content.defects.map((x) => [x.text, x.opposite]));
@@ -379,26 +388,36 @@
       if (t.assetsOther && t.assetsOther.trim()) list.push(t.assetsOther.trim());
       return [...new Set(list)];
     },
-    step10Lines(d) {
-      const out = [];
-      if (d.who && d.who.trim()) out.push(`Wer/Was: ${d.who.trim()}`);
-      if (d.what.trim()) out.push(`Was war los: ${d.what.trim()}`);
-      if ((d.affects || []).length) out.push(`Das beeinflusst bei mir: ${d.affects.join(", ")}`);
-      const f = d.feelings.concat(d.feelingsOther.trim() ? [d.feelingsOther.trim()] : []);
-      if (f.length) out.push(`Gefühle: ${f.join(", ")}`);
-      const c = d.defects.concat(d.defectsOther.trim() ? [d.defectsOther.trim()] : []);
-      if (c.length) out.push(`Mein Anteil (Charakterfehler): ${c.join(", ")}`);
-      const o = this.opposites(d);
-      if (o.length) out.push(`Stattdessen üben: ${o.join(", ")}`);
-      if (d.prayed) out.push("• 7.-Schritt-Gebet gesprochen");
-      if (d.learn.trim()) out.push(`Gelernt / anders machen: ${d.learn.trim()}`);
-      if (d.hinder.trim()) out.push(`Was hat mich gehindert: ${d.hinder.trim()}`);
-      if (d.amend !== null) out.push(`Wiedergutmachung/Klärung: ${d.amend ? "Ja" + (d.amendWhat ? " – " + d.amendWhat : "") + (d.amendDone ? " (erledigt)" : "") : "Nein"}`);
-      if (d.help && d.help.trim()) out.push(`Wem ich jetzt helfen kann: ${d.help.trim()}`);
-      if (d.newcomerCalled !== null) out.push(`Newcomer/AA-Freund angerufen: ${d.newcomerCalled ? "Ja" + (d.newcomerName ? " – " + d.newcomerName : "") : "Nein"}`);
-      if (d.talked !== null) out.push(`Mit jemandem geteilt: ${d.talked ? "Ja" + (d.talkedWho ? " – " + d.talkedWho : "") : "Nein" + (d.talkedWhy ? " – " + d.talkedWhy : "")}`);
-      return out;
+    formatStep10(d, title, withPrayer) {
+      const F = this._fmt;
+      const feelings = d.feelings.concat(d.feelingsOther.trim() ? [d.feelingsOther.trim()] : []);
+      const defects = d.defects.concat(d.defectsOther.trim() ? [d.defectsOther.trim()] : []);
+      const opp = this.opposites(d);
+      const head = [d.who && d.who.trim() ? `*Wer/Was:* ${d.who.trim()}` : "", d.what.trim()].filter(Boolean).join("\n");
+      const facts = [
+        (d.affects || []).length ? `*Das beeinflusst bei mir:* ${d.affects.map((x) => x.replace(/\s*\(.*\)$/, "")).join(" · ")}` : "",
+        feelings.length ? `*Gefühle:* ${feelings.join(" · ")}` : ""
+      ].filter(Boolean).join("\n");
+      const prayer = withPrayer && d.prayed && this.personalPrayer(d) ? F.quote(this.personalPrayer(d).replace(/\n/g, "_\n_")) : "";
+      const after = [
+        d.learn.trim() ? `*Gelernt:* ${d.learn.trim()}` : "",
+        d.hinder.trim() ? `*Gehindert hat mich:* ${d.hinder.trim()}` : "",
+        d.amend === true ? `*Wiedergutmachung:* ${d.amendWhat.trim() || "ja"}${d.amendDone ? " ✓" : " (offen)"}` : d.amend === false ? "*Wiedergutmachung:* keine nötig" : "",
+        d.help && d.help.trim() ? `*Helfen kann ich:* ${d.help.trim()}` : "",
+        d.newcomerCalled === true ? `*Angerufen:* ${d.newcomerName.trim() || "ja"}` : "",
+        d.talked === true ? `*Geteilt mit:* ${d.talkedWho.trim() || "ja"}` : d.talked === false ? `*Noch nicht geteilt*${d.talkedWhy.trim() ? " – " + d.talkedWhy.trim() : ""}` : ""
+      ].filter(Boolean).join("\n");
+      const body = F.blocks([
+        [head, facts].filter(Boolean).join("\n"),
+        F.sec("Mein Anteil", F.list(defects)),
+        F.sec("Stattdessen will ich üben", F.list(opp)),
+        d.prayed ? (prayer ? `*Mein 7.-Schritt-Gebet* ✓\n${prayer}` : "✓ 7.-Schritt-Gebet gesprochen") : "",
+        after
+      ]);
+      return body ? `*${title}*\n\n${body}` : "";
     },
+    // Kompatibilität (wird nicht mehr zum Teilen benutzt)
+    step10Lines(d) { return this.plain(this.formatStep10(d, "10. Schritt")).split("\n"); },
     // Persönlicher Teil des 7.-Schritt-Gebets (eigene Worte, keine Buchzitate)
     personalPrayer(t) {
       const c = t.defects.concat(t.defectsOther && t.defectsOther.trim() ? [t.defectsOther.trim()] : []);
@@ -413,10 +432,10 @@
       return lines.join("\n");
     },
     formatDay(date, day, which) {
-      const parts = [`AA-Reflex · ${D.pretty(date)}`];
-      if (which !== "evening") { const t = this.formatMorning(day); if (t.split("\n").length > 1) parts.push(t); }
-      if (which !== "morning") { const t = this.formatEvening(day); if (t) parts.push(t); }
-      return parts.join("\n\n");
+      const parts = [];
+      if (which !== "evening") parts.push(this.formatMorning(day, date));
+      if (which !== "morning") parts.push(this.formatEvening(day, date));
+      return parts.filter(Boolean).join("\n\n— — —\n\n") || `${D.pretty(date)}: keine Einträge`;
     },
 
     // ---------- Backup ----------
