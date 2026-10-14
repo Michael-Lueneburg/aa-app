@@ -1,4 +1,4 @@
-// AA-Reflex – PDF-Funktionen (Bibliothek, Leser, Gebete aus PDF übernehmen).
+// AA-Reflektion – PDF-Funktionen (Bibliothek, Leser, Gebete aus PDF übernehmen).
 // Nutzt Mozillas pdf.js (vendor/pdfjs, Apache-2.0). Alles läuft lokal auf dem Gerät.
 (function () {
   "use strict";

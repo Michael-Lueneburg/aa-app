@@ -1,4 +1,4 @@
-// AA-Reflex V2 – Standardinhalte.
+// AA-Reflektion – Standardinhalte.
 // Diese Inhalte werden beim ersten Start in die App übernommen und lassen sich
 // danach in der App unter „Mehr → Inhalte pflegen" ändern.
 window.AA_DEFAULTS = {
@@ -62,13 +62,15 @@ window.AA_DEFAULTS = {
     "Nicht nur für mich bitten – frei werden vom Eigenwillen",
     "Mir vornehmen, tagsüber innezuhalten, wenn ich unruhig oder unsicher werde"
   ],
-  s11Flags: ["nachtragend", "selbstsüchtig", "unehrlich", "ängstlich"],
+  // Rückschau am Abend (11. Schritt) – Antippen = ja, dann Textfeld
   s11Evening: [
+    "War ich nachtragend oder verärgert?",
+    "War ich selbstsüchtig?",
+    "War ich unehrlich?",
+    "War ich ängstlich?",
     "Schulde ich jemandem eine Entschuldigung?",
-    "Habe ich etwas für mich behalten, das ich mit jemandem besprechen sollte?",
-    "War ich zu allen freundlich und liebevoll?",
-    "Was hätte ich besser machen können?",
-    "Habe ich die meiste Zeit an mich gedacht – oder daran, was ich für andere tun kann?"
+    "Habe ich etwas für mich behalten, das ich sofort mit einem anderen Menschen hätte besprechen sollen?",
+    "Was hätte ich besser machen können?"
   ],
   program: ["Basics", "Dienste", "Meetings", "Programmarbeit", "Arbeitsmeeting", "Sponsees", "Dankbarkeitsliste", "Sprechermeeting"],
   affirmations: {
@@ -184,5 +186,5 @@ window.AA_CONTACT = {
   name: "Michael aus Lüneburg",
   phone: "+491724174636",       // für Anruf, SMS, WhatsApp
   phoneDisplay: "0172 4174636",
-  whatsappText: "Hallo Michael, ich nutze AA-Reflex und "
+  whatsappText: "Hallo Michael, ich nutze AA-Reflektion und "
 };

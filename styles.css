@@ -255,3 +255,10 @@ details.s11 > summary > span:first-child { flex: 1; }
 .s11-stat { font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
 .s11-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 10px; font-size: 14px; }
 .s11-hint[hidden] { display: none; }
+
+/* 11. Schritt Abend (2.5) */
+.qlist { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 14px; }
+.qbtn { width: 100%; text-align: left; padding: 10px 12px; min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+.qitem.on .qbtn { background: var(--accent); border-color: var(--accent-line); color: var(--on-accent); }
+.qitem textarea { margin-top: 6px; }
+.calm { margin: 14px 0 4px; padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--surface-2); border-radius: 0 10px 10px 0; font-weight: 600; }

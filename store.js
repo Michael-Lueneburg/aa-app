@@ -1,4 +1,4 @@
-// AA-Reflex V2 – Datenmodell, Speicher, Backup, V1-Import, Auswertungen.
+// AA-Reflektion – Datenmodell, Speicher, Backup, V1-Import, Auswertungen.
 // Keine Oberfläche in dieser Datei.
 (function () {
   "use strict";
@@ -50,7 +50,6 @@
       defects: src.defects.map(([text, opposite]) => ({ id: uid(), text, opposite })),
       affects: simple(src.affects),
       s11Morning: simple(src.s11Morning),
-      s11Flags: simple(src.s11Flags),
       s11Evening: simple(src.s11Evening),
       program: simple(src.program),
       prayers: [], // { id, title, text, fav, source }
@@ -68,8 +67,7 @@
     defects: { title: "10. Schritt – Charakterfehler & Gegenteil", grouped: false, pairs: true },
     program: { title: "Programm-Check", grouped: false },
     s11Morning: { title: "11. Schritt – Morgens", grouped: false },
-    s11Flags: { title: "11. Schritt – Heute war ich …", grouped: false },
-    s11Evening: { title: "11. Schritt – Rückschau am Abend", grouped: false }
+    s11Evening: { title: "11. Schritt – Rückschau-Fragen (Abend)", grouped: false }
   };
 
   // ---------- Zustand ----------
@@ -84,7 +82,7 @@
       quoteOfDay: null, // { date, id }
       days: {},
       library: [], // { id, title, name, size, pages, addedAt, lastPage } – PDF-Dateien liegen separat in IndexedDB
-      meta: { lastBackupAt: null, v1ImportedAt: null, contentRev: 2 }
+      meta: { lastBackupAt: null, v1ImportedAt: null, contentRev: 3 }
     };
   }
 
@@ -93,7 +91,7 @@
       morning: { thankful: [""], selfcare: [""], selfcareChips: [], focus: [], focusNote: "", affirmation: null, quote: null, done: false, doneAt: null,
         s11: { done: [], unsure: "", prayed: false } },
       evening: { goodForSomeone: "", learned: "", threeGood: ["", "", ""], programDone: [], step10: null, specialThanks: "", s10: null, done: false, doneAt: null,
-        s11: { flags: [], done: [], note: "", prayed: false } },
+        s11: { yes: [], notes: {}, qtext: {}, correct: "", prayed: false } },
       inventories: [], // Schnell-Inventuren (10. Schritt tagsüber), gleicher Aufbau wie s10 plus id/time/done
       updatedAt: null
     };
@@ -122,6 +120,12 @@
       defPairs.forEach(([text, opposite]) => { if (!have.has(text)) out.content.defects.push({ id: uid(), text, opposite }); });
       out.meta.contentRev = 2;
     }
+    if (out.meta.contentRev < 3) {
+      // 2.5: neue Rückschau-Fragen in Ich-Form, „Heute war ich …“ entfällt
+      out.content.s11Evening = window.AA_DEFAULTS.s11Evening.map((text) => ({ id: uid(), text }));
+      out.meta.contentRev = 3;
+    }
+    delete out.content.s11Flags;
     out.library = Array.isArray(st.library) ? st.library : [];
     for (const k of Object.keys(out.days)) {
       const t = newDay(), d = out.days[k];
@@ -250,7 +254,7 @@
       const any = (a) => (a || []).some((x) => String(x).trim());
       return !(any(m.thankful) || any(m.selfcare) || m.selfcareChips.length || m.focus.length || m.focusNote.trim() || m.affirmation ||
         e.goodForSomeone.trim() || e.learned.trim() || any(e.threeGood) || e.programDone.length || e.step10 !== null || m.done || e.done || (day.inventories || []).length ||
-        (m.s11 && (m.s11.done.length || m.s11.unsure.trim() || m.s11.prayed)) || (e.s11 && (e.s11.flags.length || e.s11.done.length || e.s11.note.trim() || e.s11.prayed)));
+        (m.s11 && (m.s11.done.length || m.s11.unsure.trim() || m.s11.prayed)) || (e.s11 && ((e.s11.yes || []).length || (e.s11.correct || "").trim() || e.s11.prayed || (e.s11.flags || []).length || (e.s11.done || []).length || (e.s11.note || "").trim())));
     },
     deleteDay(date) { delete this.state.days[date]; this.scheduleSave(); },
 
@@ -386,7 +390,7 @@
         e.learned.trim() ? F.sec("Heute durfte ich lernen", e.learned.trim()) : "",
         F.sec("Tolle Dinge heute", F.list(F.clean(e.threeGood))),
         e.programDone.length ? F.sec("Mein Programm heute", e.programDone.join(" · ")) : "",
-        this.fmtS11Evening(e.s11),
+        this.fmtS11Evening(e.s11) ? "┈┈┈┈┈┈┈┈┈┈┈┈\n" + this.fmtS11Evening(e.s11) : "",
         e.step10 === false && e.specialThanks.trim() ? F.sec("Besonders dankbar bin ich für", e.specialThanks.trim()) : ""
       ];
       const line = "┈┈┈┈┈┈┈┈┈┈┈┈\n";
@@ -403,12 +407,31 @@
       return lines.join("\n");
     },
     fmtS11Evening(x) {
-      if (!x || !(x.flags.length || x.done.length || x.note.trim() || x.prayed)) return "";
-      const n = this.state.content.s11Evening.filter((i) => i.text.trim()).length;
-      const lines = [`🕯️ *Rückschau (11. Schritt):* ${x.done.length} von ${n}${x.prayed ? " · 🙏 Gebet gesprochen" : ""}`];
-      if (x.flags.length) lines.push(`*Heute war ich:* ${x.flags.join(" · ")}`);
-      if (x.note.trim()) lines.push(x.note.trim());
-      return lines.join("\n");
+      if (!x) return "";
+      const yes = x.yes || [];
+      // Ältere Einträge (2.4) weiterhin lesbar
+      if (!yes.length && ((x.flags || []).length || (x.done || []).length || (x.note || "").trim())) {
+        const lines = [`🕯️ *Rückschau (11. Schritt)*${x.prayed ? " · 🙏" : ""}`];
+        if ((x.flags || []).length) lines.push(`*Heute war ich:* ${x.flags.join(" · ")}`);
+        if ((x.note || "").trim()) lines.push(x.note.trim());
+        return lines.join("\n");
+      }
+      if (!yes.length && !(x.correct || "").trim() && !x.prayed) return "";
+      const order = this.state.content.s11Evening.map((q) => q.id);
+      const ids = yes.slice().sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+      const wQuestion = (q) => /^(was|wie|wo|wann|wem|wen|warum|wer|wofür|womit)\b/i.test(q);
+      const blocks = ids.map((id) => {
+        const cur = this.state.content.s11Evening.find((q) => q.id === id);
+        const q = (cur && cur.text) || (x.qtext || {})[id] || "Frage";
+        const note = ((x.notes || {})[id] || "").trim();
+        const answer = wQuestion(q) ? (note || "—") : (note ? `Ja – ${note}` : "Ja");
+        return `*${q}*\n${answer}`;
+      });
+      const tail = [
+        (x.correct || "").trim() ? `*Korrigieren will ich:* ${x.correct.trim()}` : "",
+        x.prayed ? "🙏 Gebet gesprochen" : ""
+      ].filter(Boolean).join("\n");
+      return ["🕯️ *11. Schritt – Rückschau*", ...blocks, tail].filter(Boolean).join("\n\n");
     },
     opposites(t) {
       const map = Object.fromEntries(this.state.content.defects.map((x) => [x.text, x.opposite]));
@@ -468,21 +491,21 @@
 
     // ---------- Backup ----------
     backupPayload() {
-      return JSON.stringify({ app: "AA-Reflex", schema: SCHEMA, exportedAt: new Date().toISOString(), state: this.state }, null, 1);
+      return JSON.stringify({ app: "AA-Reflektion", schema: SCHEMA, exportedAt: new Date().toISOString(), state: this.state }, null, 1);
     },
     // Erkennt V2-Backup oder V1-Daten. Rückgabe: { kind, state?, days? }
     parseImport(text) {
       let obj;
       try { obj = JSON.parse(text); } catch (e) { throw new Error("Die Datei ist kein gültiges Backup (kein JSON)."); }
       if (typeof obj === "string") { try { obj = JSON.parse(obj); } catch (e) { /* bleibt */ } }
-      if (obj && obj.app === "AA-Reflex" && obj.state && obj.state.days) {
+      if (obj && (obj.app === "AA-Reflektion" || obj.app === "AA-Reflex") && obj.state && obj.state.days) {
         const st = normalize(obj.state);
         st.meta.lastBackupAt = obj.exportedAt || st.meta.lastBackupAt; // Daten entsprechen genau diesem Backup
         return { kind: "v2", state: st };
       }
       const v1 = obj && obj.aa_reflex_store_v1 ? (typeof obj.aa_reflex_store_v1 === "string" ? JSON.parse(obj.aa_reflex_store_v1) : obj.aa_reflex_store_v1) : obj;
       if (v1 && v1.history && typeof v1.history === "object") return { kind: "v1", days: migrateV1(v1), v1 };
-      throw new Error("Unbekanntes Format – weder AA-Reflex-Backup noch Daten aus Version 1.");
+      throw new Error("Unbekanntes Format – weder AA-Reflektion-Backup noch Daten aus Version 1.");
     },
     replaceState(st) { this.state = normalize(st); return this.saveNow(); },
     mergeV1(days, v1) {

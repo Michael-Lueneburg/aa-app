@@ -1,8 +1,8 @@
-// AA-Reflex V2 – Oberfläche
+// AA-Reflektion – Oberfläche
 (function () {
   "use strict";
   const { Store, D, LISTS, uid, newStep10, contentFromDefaults } = window.AA;
-  const APP_VERSION = "2.4.0";
+  const APP_VERSION = "2.5.0";
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -48,7 +48,7 @@
   }
 
   // ---------- Teilen, Kopieren, Dateien ----------
-  async function shareText(text, title = "AA-Reflex") {
+  async function shareText(text, title = "AA-Reflektion") {
     if (navigator.share) {
       try { await navigator.share({ title, text }); return; } catch (e) { if (e && e.name === "AbortError") return; }
     }
@@ -257,23 +257,28 @@
       ${s11PrayerBlock("morning.s11.prayed", m.s11.prayed)}
     </details>`;
   }
+  const s11EStat = (x) => `${(x.yes || []).length} × ja${x.prayed ? " · 🙏" : ""}`;
   function s11EveningCard(e) {
     const x = e.s11;
+    const qs = S().content.s11Evening.filter((q) => q.text.trim());
     return `<details class="card s11" data-s11="e" ${view.dataset.s11open === "e" ? "open" : ""}>
-      <summary><span>🕯️ 11. Schritt – Rückschau</span><span class="s11-stat">${s11Stat(x, "s11Evening")}</span></summary>
-      <p class="hint">Freiwillig – zählt nicht für „abschließen“.</p>
-      <label class="lbl">Heute war ich …</label>
-      ${chips("evening.s11.flags", texts("s11Flags"), x.flags)}
-      <div class="s11-hint" ${x.flags.length ? "" : "hidden"}>
-        <span>Vielleicht doch ein 10. Schritt?</span>
-        <button type="button" class="btn sm" id="s11-to10">10. Schritt öffnen</button>
+      <summary><span>🕯️ 11. Schritt – Rückschau</span><span class="s11-stat">${s11EStat(x)}</span></summary>
+      <p class="hint">Antippen heißt „ja“ – dann kurz festhalten, was war. Freiwillig, zählt nicht für „abschließen“.</p>
+      <div class="qlist">
+        ${qs.map((q) => {
+          const on = x.yes.includes(q.id);
+          return `<div class="qitem ${on ? "on" : ""}">
+            <button type="button" class="qbtn" data-q="${q.id}" aria-pressed="${on}">${on ? "✓ " : ""}${esc(q.text)}</button>
+            ${on ? `<textarea rows="2" data-qnote="${q.id}" placeholder="Was war? Wem gegenüber?">${esc(x.notes[q.id] || "")}</textarea>` : ""}
+          </div>`;
+        }).join("")}
       </div>
-      <label class="lbl">Rückschau</label>
-      ${chips("evening.s11.done", texts("s11Evening"), x.done, "stack")}
-      <label class="lbl">Notiz</label>
-      <textarea data-bind="evening.s11.note" rows="2">${esc(x.note)}</textarea>
-      <p class="hint">Danach nicht ins Grübeln verfallen: Was schiefging, hinlegen, um Vergebung bitten und fragen, was ich morgen anders machen kann.</p>
+      <h3>Gebet und Besinnung</h3>
+      <p>Um Vergebung bitten – und überlegen, was ich korrigieren will.</p>
+      <label class="lbl">Was will ich korrigieren?</label>
+      <textarea data-bind="evening.s11.correct" rows="2">${esc(x.correct)}</textarea>
       ${s11PrayerBlock("evening.s11.prayed", x.prayed)}
+      <p class="calm">Und dann: nicht in Grübelei, Verzweiflung oder Selbstmitleid verfallen.</p>
     </details>`;
   }
   function wireS11(date, day) {
@@ -281,25 +286,25 @@
       const kind = d.dataset.s11;
       d.addEventListener("toggle", () => { if (d.open) view.dataset.s11open = kind; else if (view.dataset.s11open === kind) delete view.dataset.s11open; });
       const upd = () => setTimeout(() => {
-        const x = kind === "m" ? day.morning.s11 : day.evening.s11;
-        $(".s11-stat", d).textContent = s11Stat(x, kind === "m" ? "s11Morning" : "s11Evening");
-        const h = $(".s11-hint", d); if (h) h.hidden = !x.flags.length;
+        $(".s11-stat", d).textContent = kind === "m" ? s11Stat(day.morning.s11, "s11Morning") : s11EStat(day.evening.s11);
       }, 0);
       d.addEventListener("click", upd); d.addEventListener("input", upd); d.addEventListener("change", upd);
     });
-    const to10 = $("#s11-to10");
-    if (to10) to10.onclick = () => {
-      const e = day.evening;
-      e.step10 = true;
-      if (!e.s10) e.s10 = newStep10();
-      // Passende Charakterfehler vorschlagen
-      const map = { nachtragend: "Groll/Ressentiment", selbstsüchtig: "Selbstsucht/Egoismus", unehrlich: "Unehrlichkeit/Selbsttäuschung", ängstlich: "Selbstbezogene Angst" };
-      const known = texts("defects");
-      e.s11.flags.forEach((f) => { const d = map[f.toLowerCase()]; if (d && known.includes(d) && !e.s10.defects.includes(d)) e.s10.defects.push(d); });
+    const x = day.evening.s11;
+    $$("[data-q]").forEach((b) => b.onclick = () => {
+      const id = b.dataset.q;
+      const q = S().content.s11Evening.find((i) => i.id === id);
+      const i = x.yes.indexOf(id);
+      if (i >= 0) x.yes.splice(i, 1);           // Notiz bleibt erhalten, falls man es sich anders überlegt
+      else { x.yes.push(id); if (q) x.qtext[id] = q.text; }
       Store.commitDay(date, day);
       rerender();
-      const sec = $("#sec-s10"); if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
+      if (i < 0) { const t = $(`[data-qnote="${id}"]`); if (t) t.focus(); }
+    });
+    $$("[data-qnote]").forEach((t) => t.oninput = () => {
+      x.notes[t.dataset.qnote] = t.value;
+      Store.commitDay(date, day);
+    });
   }
 
   // ---------- Morgen ----------
@@ -687,7 +692,7 @@
       if (!ks.length) { toast("Keine Einträge in diesem Zeitraum."); return null; }
       return { text: ks.map((k) => Store.formatDay(k, st.days[k])).join("\n\n━━━━━━━━━━━━\n\n"), from, to };
     };
-    $("#ex-file").onclick = () => { const r = rangeText(); if (r) downloadFile(`AA-Reflex_${r.from}_bis_${r.to}.txt`, Store.plain(r.text), "text/plain;charset=utf-8"); };
+    $("#ex-file").onclick = () => { const r = rangeText(); if (r) downloadFile(`AA-Reflektion_${r.from}_bis_${r.to}.txt`, Store.plain(r.text), "text/plain;charset=utf-8"); };
     $("#ex-share").onclick = () => { const r = rangeText(); if (r) shareText(r.text); };
   }
 
@@ -712,7 +717,7 @@
         </div>
       </section>`;
     $("#d-share").onclick = () => shareText(Store.formatDay(date, day));
-    $("#d-file").onclick = () => downloadFile(`AA-Reflex_${date}.txt`, Store.plain(Store.formatDay(date, day)), "text/plain;charset=utf-8");
+    $("#d-file").onclick = () => downloadFile(`AA-Reflektion_${date}.txt`, Store.plain(Store.formatDay(date, day)), "text/plain;charset=utf-8");
     $("#d-del").onclick = async () => {
       if (await dialog({ title: "Tag löschen?", text: `Alle Einträge vom ${D.pretty(date)} werden entfernt.`, okLabel: "Löschen", danger: true })) {
         Store.deleteDay(date); await Store.saveNow(); toast("Tag gelöscht."); location.hash = "#/verlauf";
@@ -804,12 +809,12 @@
   // ---------- Mehr ----------
   async function createBackup() {
     const text = Store.backupPayload();
-    const name = `AA-Reflex-Backup_${D.fromDate(new Date())}.json`;
+    const name = `AA-Reflektion-Backup_${D.fromDate(new Date())}.json`;
     const done = () => { S().meta.lastBackupAt = new Date().toISOString(); Store.saveNow(); toast("Backup erstellt."); if (parseHash().name === "mehr" || parseHash().name === "morgen" || !parseHash().name) rerender(); };
     try {
       const file = new File([text], name, { type: "application/json" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: "AA-Reflex Backup" });
+        await navigator.share({ files: [file], title: "AA-Reflektion Backup" });
         return done();
       }
     } catch (e) { if (e && e.name === "AbortError") return; }
@@ -848,7 +853,7 @@
     const num = c.phone.replace(/[^\d+]/g, "");
     return `<section class="card about">
         <h2>Über die App</h2>
-        <p>AA-Reflex ist ein privates Projekt von <strong>${esc(c.name)}</strong>. Fragen, Ideen, Fehler – oder einfach ins Gespräch kommen:</p>
+        <p>AA-Reflektion ist ein privates Projekt von <strong>${esc(c.name)}</strong>. Fragen, Ideen, Fehler – oder einfach ins Gespräch kommen:</p>
         <p class="center"><strong>${esc(c.phoneDisplay || c.phone)}</strong></p>
         <div class="btnrow contact">
           <a class="btn" href="tel:${num}">📞 Anrufen</a>
@@ -915,7 +920,7 @@
         <p class="hint">Alle Einträge liegen nur auf diesem Gerät. Nichts wird an einen Server geschickt.</p>
         <button type="button" class="btn danger-ghost" id="wipe">Alle Daten löschen</button>
       </section>
-      <div class="center"><p class="hint">AA-Reflex ${APP_VERSION}</p><button type="button" class="btn sm" id="upd-check">Nach Updates suchen</button></div>
+      <div class="center"><p class="hint">AA-Reflektion ${APP_VERSION}</p><button type="button" class="btn sm" id="upd-check">Nach Updates suchen</button></div>
       ${aboutCard()}`;
 
     const s = st.settings;
